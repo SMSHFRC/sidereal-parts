@@ -1,0 +1,220 @@
+// =========================================================
+// 零件加工任務管理系統 — Prisma Schema
+// 對應 schema.sql，可直接用於 Node.js backend
+// =========================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            BigInt   @id @default(autoincrement())
+  email         String   @unique
+  displayName   String   @map("display_name")
+  passwordHash  String?  @map("password_hash")
+  isActive      Boolean  @default(true) @map("is_active")
+  totalPoints   BigInt   @default(0) @map("total_points")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  roles             UserRole[]
+  designedTasks     Task[]              @relation("Designer")
+  machiningTasks    Task[]              @relation("Machinist")
+  statusChanges     TaskStatusHistory[]
+  pointsLedger      UserPointsLedger[]
+  sentTransfers     PointTransfer[]     @relation("TransferFrom")
+  receivedTransfers PointTransfer[]     @relation("TransferTo")
+
+  @@map("users")
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  users UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId     BigInt   @map("user_id")
+  roleId     Int      @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model System {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tasks Task[]
+
+  @@map("systems")
+}
+
+model ManufacturingMethod {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tasks Task[]
+
+  @@map("manufacturing_methods")
+}
+
+model Material {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tasks Task[]
+
+  @@map("materials")
+}
+
+model PostProcess {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tasks TaskPostProcess[]
+
+  @@map("post_processes")
+}
+
+model TaskStatus {
+  code       String  @id
+  name       String
+  sortOrder  Int     @default(0) @map("sort_order")
+  isTerminal Boolean @default(false) @map("is_terminal")
+
+  tasks    Task[]
+  fromHist TaskStatusHistory[] @relation("FromStatus")
+  toHist   TaskStatusHistory[] @relation("ToStatus")
+
+  @@map("task_statuses")
+}
+
+model Task {
+  id               BigInt @id @default(autoincrement())
+  partNumber       String @unique @map("part_number")
+  partNumberPrefix String @map("part_number_prefix")
+  partNumberSeq    BigInt @map("part_number_seq")
+
+  manufacturingMethodId Int       @map("manufacturing_method_id")
+  systemId              Int       @map("system_id")
+  designerId            BigInt    @map("designer_id")
+  machinistId           BigInt    @map("machinist_id")
+  materialId            Int?      @map("material_id")
+  quantity              Int
+  rewardPoints          Int       @default(0) @map("reward_points")
+  drawingUrl            String?   @map("drawing_url")
+  dimension             String?
+  statusCode            String    @default("pending") @map("status_code")
+  note                  String?
+  dueDate               DateTime? @map("due_date") @db.Date
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  manufacturingMethod ManufacturingMethod @relation(fields: [manufacturingMethodId], references: [id])
+  system              System              @relation(fields: [systemId], references: [id])
+  designer            User                @relation("Designer", fields: [designerId], references: [id])
+  machinist           User                @relation("Machinist", fields: [machinistId], references: [id])
+  material            Material?           @relation(fields: [materialId], references: [id])
+  status              TaskStatus          @relation(fields: [statusCode], references: [code])
+  postProcesses       TaskPostProcess[]
+  statusHistory       TaskStatusHistory[]
+  pointsLedger        UserPointsLedger[]
+
+  @@unique([partNumberPrefix, partNumberSeq])
+  @@index([machinistId])
+  @@index([designerId])
+  @@index([statusCode])
+  @@index([systemId])
+  @@map("tasks")
+}
+
+model TaskPostProcess {
+  taskId        BigInt @map("task_id")
+  postProcessId Int    @map("post_process_id")
+  sortOrder     Int    @default(0) @map("sort_order")
+
+  task        Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  postProcess PostProcess @relation(fields: [postProcessId], references: [id])
+
+  @@id([taskId, postProcessId])
+  @@map("task_post_processes")
+}
+
+model TaskStatusHistory {
+  id         BigInt   @id @default(autoincrement())
+  taskId     BigInt   @map("task_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  changedBy  BigInt   @map("changed_by")
+  note       String?
+  changedAt  DateTime @default(now()) @map("changed_at")
+
+  task Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  from TaskStatus? @relation("FromStatus", fields: [fromStatus], references: [code])
+  to   TaskStatus  @relation("ToStatus", fields: [toStatus], references: [code])
+  user User        @relation(fields: [changedBy], references: [id])
+
+  @@index([taskId])
+  @@map("task_status_history")
+}
+
+model UserPointsLedger {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt   @map("user_id")
+  taskId    BigInt?  @map("task_id")
+  points    Int
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task? @relation(fields: [taskId], references: [id])
+
+  @@unique([taskId, userId])
+  @@index([userId])
+  @@map("user_points_ledger")
+}
+
+model PointTransfer {
+  id         BigInt   @id @default(autoincrement())
+  fromUserId BigInt   @map("from_user_id")
+  toUserId   BigInt   @map("to_user_id")
+  points     Int
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  fromUser User @relation("TransferFrom", fields: [fromUserId], references: [id])
+  toUser   User @relation("TransferTo", fields: [toUserId], references: [id])
+
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@map("point_transfers")
+}
