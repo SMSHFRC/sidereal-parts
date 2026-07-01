@@ -1,0 +1,38 @@
+# Render Blueprint — 僅建立 Web Service（資料庫使用外部 Neon Postgres）
+# 注意：此檔必須位於 repo 根目錄，Render Blueprint 才會偵測到。
+# 後端程式在 backend/ 子目錄，故以 rootDir 指定。
+services:
+  - type: web
+    name: parts-task-api
+    runtime: node
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: npm ci && npx prisma generate && npx prisma migrate deploy && npm run db:seed
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # DATABASE_URL 不放進版控；部署後於 Dashboard 貼上 Neon 的 direct 連線字串
+      - key: DATABASE_URL
+        sync: false
+      # 兩把 JWT secret 由 Render 自動產生
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_TTL
+        value: 1h
+      - key: JWT_REFRESH_TTL
+        value: 7d
+      - key: BCRYPT_ROUNDS
+        value: "12"
+      - key: SEED_ADMIN_USER
+        value: admin
+      # 預設 admin 密碼於 Dashboard 手動填入強密碼
+      - key: SEED_ADMIN_PASS
+        sync: false
+      # 前端網域；前端上線後於 Dashboard 填入
+      - key: CORS_ORIGINS
+        sync: false
