@@ -37,6 +37,16 @@ app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 // 全域流量限制
 app.use(globalLimiter);
 
+// 根路由：訪問網站根目錄時的服務資訊（避免直接看到 404）
+app.get('/', (_req, res) =>
+  res.json({
+    name: '零件加工任務管理系統 API',
+    status: 'running',
+    apiBase: '/api/v1',
+    health: '/health',
+  }),
+);
+
 // 健康檢查（部署平台探針用）
 app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
