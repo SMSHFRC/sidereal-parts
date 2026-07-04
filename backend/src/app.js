@@ -9,6 +9,26 @@ import { ApiError } from './utils/ApiError.js';
 
 const app = express();
 
+const isAllowedOrigin = (origin) => {
+  if (!origin || env.corsOrigins.length === 0) return true;
+  let parsed;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+
+  return env.corsOrigins.some((allowed) => {
+    if (allowed === origin) return true;
+    if (allowed.startsWith('*.')) return parsed.hostname.endsWith(allowed.slice(1));
+    if (allowed.includes('://*.')) {
+      const [protocol, hostPattern] = allowed.split('://*.');
+      return parsed.protocol === `${protocol}:` && parsed.hostname.endsWith(`.${hostPattern}`);
+    }
+    return false;
+  });
+};
+
 // 反向代理（Render/Nginx）後正確取得 client IP，讓 rate limit 生效
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -21,7 +41,7 @@ app.use(
   cors({
     origin(origin, cb) {
       // 無 origin（如 curl / server-to-server）放行；其餘須在白名單
-      if (!origin || env.corsOrigins.length === 0 || env.corsOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         return cb(null, true);
       }
       return cb(new ApiError(403, 'CORS 來源不被允許', 'CORS_FORBIDDEN'));
