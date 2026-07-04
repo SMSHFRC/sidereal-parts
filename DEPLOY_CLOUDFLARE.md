@@ -1,69 +1,110 @@
 # Cloudflare Pages 部署指南
 
-本指南用於把 `sidereal-parts` 前端部署到 Cloudflare Pages，並讓它連到 Render 上的後端 API。
+這份文件用來把 `sidereal-parts` 前端部署到 Cloudflare Pages，並連到 Render 上的後端 API。
 
-## 目前 GitHub 分支
+## 0. 快速設定表
 
-已推上 GitHub 的分支：
+### GitHub
 
-```text
-deploy/render-neon-config
-```
+| 項目 | 值 |
+|---|---|
+| Repo | `SMSHFRC/sidereal-parts` |
+| Repo URL | `https://github.com/SMSHFRC/sidereal-parts.git` |
+| 部署分支 | `main` |
 
-目前包含：
+### Cloudflare Pages
 
-- 後端 M1：`member/admin` 角色、自認領接單、任務池、`GET /meta/options`
-- 前端 React SPA：看板、任務詳情、新增任務、登入
-- Cloudflare SPA fallback：`frontend/public/_redirects`
+| 欄位 | 值 |
+|---|---|
+| Framework preset | `Vite` 或 `None` |
+| Root directory | `frontend` |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Environment variable | `VITE_API_BASE=https://sidereal-parts.onrender.com/api/v1` |
+
+### Render Backend
+
+| 欄位 | 值 |
+|---|---|
+| Backend URL | `https://sidereal-parts.onrender.com` |
+| API base | `https://sidereal-parts.onrender.com/api/v1` |
+| CORS_ORIGINS 範例 | `https://你的-pages網址.pages.dev,https://*.pages.dev,http://localhost:5173` |
+
+## 1. 部署前確認
+
+目前 repo 已包含：
+
+- 後端 M1：`member/admin` 角色、任務池、自認領接單、`GET /meta/options`
+- 前端 React SPA：登入、看板、任務詳情、新增任務
+- Cloudflare Pages SPA fallback：`frontend/public/_redirects`
 - 後端 CORS wildcard 支援：可允許 `https://*.pages.dev`
 
-## 1. 建立 Cloudflare Pages 專案
+確認 GitHub repo：
+
+```text
+https://github.com/SMSHFRC/sidereal-parts
+```
+
+確認分支：
+
+```text
+main
+```
+
+## 2. 建立 Cloudflare Pages 專案
 
 1. 進入 Cloudflare Dashboard
-2. 選 `Workers & Pages`
+2. 打開 `Workers & Pages`
 3. 點 `Create application`
 4. 選 `Pages`
 5. 選 `Connect to Git`
-6. 選 GitHub repo：
+6. 授權並選擇 repo：
 
 ```text
-WindGreen0130/sidereal-parts
+SMSHFRC/sidereal-parts
 ```
 
-7. 選部署分支：
+7. 選 branch：
 
 ```text
-deploy/render-neon-config
+main
 ```
 
-## 2. Cloudflare Pages Build 設定
+## 3. 設定 Build
 
-填入以下設定：
+在 Cloudflare Pages 的 build 設定填：
 
 ```text
-Framework preset: None / Vite
+Framework preset: Vite
 Root directory: frontend
 Build command: npm run build
 Build output directory: dist
 ```
 
-如果 Cloudflare UI 顯示 `Build system version`，用預設即可。
+如果 `Framework preset` 沒有選 Vite，也可以選 `None`，只要其他欄位正確即可。
 
-## 3. Cloudflare Pages 環境變數
+## 4. 設定前端環境變數
 
-在 Pages 專案設定中加入：
+在 Cloudflare Pages 的 `Environment variables` 加入：
 
 ```text
 VITE_API_BASE=https://sidereal-parts.onrender.com/api/v1
 ```
 
-注意：必須包含 `/api/v1`。
+注意：
 
-## 4. 部署前端
+- 必須包含 `/api/v1`
+- 改環境變數後，要重新部署 Cloudflare Pages
 
-按 `Save and Deploy`。
+## 5. 部署前端
 
-部署完成後會得到類似：
+按：
+
+```text
+Save and Deploy
+```
+
+部署完成後，Cloudflare 會產生網址，例如：
 
 ```text
 https://sidereal-parts.pages.dev
@@ -75,20 +116,26 @@ https://sidereal-parts.pages.dev
 https://<hash>.sidereal-parts.pages.dev
 ```
 
-先複製實際 Cloudflare Pages 網址，下一步要填到 Render。
+複製實際可開啟的 Pages 網址，下一步要填到 Render。
 
-## 5. Render 後端 CORS 設定
+## 6. 設定 Render CORS
 
-進入 Render：
+進入 Render Dashboard：
 
 ```text
 https://dashboard.render.com
 ```
 
-找到後端服務 `sidereal-parts`，進入 `Environment`，設定：
+找到後端服務 `sidereal-parts`，打開：
 
 ```text
-CORS_ORIGINS=https://你的-pages正式網址.pages.dev,https://*.pages.dev,http://localhost:5173
+Environment
+```
+
+設定或更新：
+
+```text
+CORS_ORIGINS=https://你的-pages網址.pages.dev,https://*.pages.dev,http://localhost:5173
 ```
 
 範例：
@@ -97,72 +144,89 @@ CORS_ORIGINS=https://你的-pages正式網址.pages.dev,https://*.pages.dev,http
 CORS_ORIGINS=https://sidereal-parts.pages.dev,https://*.pages.dev,http://localhost:5173
 ```
 
-存檔後，Render 會自動 redeploy。若沒有自動部署，手動點：
+存檔後讓 Render 重新部署。若沒有自動部署，點：
 
 ```text
 Manual Deploy -> Deploy latest commit
 ```
 
-## 6. 確認 Render 部署分支
+## 7. 確認 Render 後端版本
 
-如果 Render 目前不是部署 `deploy/render-neon-config`，要二選一：
-
-### 選項 A：Render 改部署這個分支
-
-Render service 設定中把 branch 改成：
+Render 後端必須部署到包含 M1 的版本，至少要有以下 commit：
 
 ```text
-deploy/render-neon-config
+33dbc16 Implement M1 member task flow and frontend
+f53864c Support Cloudflare Pages CORS origins
+b730e56 Add Cloudflare deployment guide
 ```
 
-### 選項 B：把分支合併回 main
+如果 Render 還連到舊的 GitHub repo 或舊 branch，請改成部署：
 
-之後再讓 Render 照原本 `main` 部署。
+```text
+SMSHFRC/sidereal-parts
+branch: main
+```
 
-## 7. 驗收流程
+## 8. 驗收流程
 
-部署完成後，開 Cloudflare Pages 網址。
+部署完成後，打開 Cloudflare Pages 網址。
 
-### 1. 登入
+### 8.1 登入
 
-使用線上資料庫裡已存在的帳號登入。
+用線上資料庫已有帳號登入。
 
-如果還沒建立 member 帳號，先用 admin 或 API 建帳號。
+如果還沒有 member 帳號，先用 admin 或 API 建立 member。
 
-### 2. 建任務
+### 8.2 建立任務
 
 1. 點 `新增`
-2. 選系統、加工方式、數量
-3. 不指定加工者
-4. 建立後任務應進入 `任務池`
+2. 選系統
+3. 選加工方式
+4. 填數量
+5. 不指定加工者
+6. 建立任務
 
-### 3. 接單
+預期結果：任務會進入 `任務池`。
 
-1. 到看板 `任務池`
-2. 按 `接單`
-3. 任務狀態應變成 `已接受`
+### 8.3 接單
 
-### 4. 完成
+1. 回到看板
+2. 切到 `任務池`
+3. 按 `接單`
 
-依序操作：
+預期結果：任務狀態變成 `已接受`，加工者變成目前登入的 member。
+
+### 8.4 完成任務
+
+無後處理任務：
 
 ```text
 接單 -> 開始加工 -> 完成
 ```
 
-若有後處理，流程是：
+有後處理任務：
 
 ```text
 接單 -> 開始加工 -> 加工完成，交後處理 -> 接下後處理 -> 完成
 ```
 
-### 5. 檢查積分
+預期結果：完成後右上角積分增加。
 
-完成後，右上角積分應增加。
+## 9. 常見問題
 
-## 8. 常見問題
+### 頁面重新整理後 404
 
-### 頁面打開空白或 404
+確認 repo 有此檔：
+
+```text
+frontend/public/_redirects
+```
+
+內容必須是：
+
+```text
+/* /index.html 200
+```
 
 確認 Cloudflare build output directory 是：
 
@@ -170,19 +234,7 @@ deploy/render-neon-config
 dist
 ```
 
-確認 repo 有：
-
-```text
-frontend/public/_redirects
-```
-
-內容應為：
-
-```text
-/* /index.html 200
-```
-
-### 登入或 API 失敗
+### 登入失敗或 API 沒反應
 
 檢查 Cloudflare Pages 環境變數：
 
@@ -190,42 +242,55 @@ frontend/public/_redirects
 VITE_API_BASE=https://sidereal-parts.onrender.com/api/v1
 ```
 
-改完後要重新部署前端。
+如果少了 `/api/v1`，前端會打錯 API。
 
-### 瀏覽器 Console 出現 CORS
+### 瀏覽器 Console 出現 CORS 錯誤
 
-檢查 Render 的：
+檢查 Render 的 `CORS_ORIGINS`。
 
-```text
-CORS_ORIGINS
-```
-
-至少包含：
+至少要包含你的 Pages 網址：
 
 ```text
 https://你的-pages網址.pages.dev
 ```
 
-建議同時包含：
+建議同時包含 preview wildcard：
 
 ```text
 https://*.pages.dev
 ```
 
-### 按接單顯示「找不到此路由」
+### 按「接單」顯示「找不到此路由」
 
-代表 Render 後端還沒部署到包含 `POST /tasks/:id/claim` 的版本。
-
-請確認 Render 部署分支含有 commit：
+新前端已改成相容舊後端的接單方式，會呼叫：
 
 ```text
-33dbc16 Implement M1 member task flow and frontend
-f53864c Support Cloudflare Pages CORS origins
+PATCH /tasks/:id/status
 ```
 
-然後重新 deploy backend。
+如果仍然看到「找不到此路由」，通常代表 Cloudflare 還在跑舊版前端。
 
-## 9. 本機指令備忘
+處理方式：
+
+1. 確認 GitHub `SMSHFRC/sidereal-parts` 已有最新 commit
+2. 到 Cloudflare Pages 重新部署最新版
+3. 部署完成後按 `Ctrl + F5` 重新整理頁面
+
+如果錯誤變成「無權執行此狀態變更」，代表線上後端仍是舊角色規則，請用 `processor01` 帳號測接單，或之後再更新後端。
+
+### Cloudflare build 失敗
+
+先確認 build 設定：
+
+```text
+Root directory: frontend
+Build command: npm run build
+Build output directory: dist
+```
+
+如果 Root directory 沒填 `frontend`，Cloudflare 會在 repo root 找不到前端 package。
+
+## 10. 本機指令備忘
 
 後端測試：
 
@@ -248,8 +313,14 @@ cd frontend
 npm run dev
 ```
 
-本機前端網址：
+本機網址：
 
 ```text
 http://localhost:5173
+```
+
+後端 health check：
+
+```text
+https://sidereal-parts.onrender.com/health
 ```

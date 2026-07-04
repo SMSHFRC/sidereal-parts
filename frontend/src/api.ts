@@ -233,7 +233,11 @@ export const taskApi = {
   get: (id: string) => api<Task>(`/tasks/${id}`),
   create: (input: CreateTaskInput) =>
     api<Task>('/tasks', { method: 'POST', body: JSON.stringify(input) }),
-  claim: (id: string) => api<Task>(`/tasks/${id}/claim`, { method: 'POST' }),
+  // Backward compatible with the currently deployed backend, which accepts
+  // unassigned pending tasks through the status endpoint but may not have
+  // POST /tasks/:id/claim deployed yet.
+  claim: (id: string) =>
+    api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'accepted' }) }),
   updateStatus: (id: string, status: TaskStatus) =>
     api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   claimPostProcess: (id: string) =>
