@@ -12,7 +12,7 @@ export const updateUserSchema = {
   body: z
     .object({
       password: z.string().min(8).max(128).optional(),
-      role: z.enum(['admin', 'designer', 'processor']).optional(),
+      role: z.enum(['admin', 'member']).optional(),
       isActive: z.boolean().optional(),
     })
     .refine((v) => Object.keys(v).length > 0, { message: '沒有可更新的欄位' }),

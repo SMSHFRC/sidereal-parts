@@ -17,6 +17,7 @@ export const createTaskSchema = {
     materialId: z.coerce.number().int().positive().optional(),
     postProcessId: z.coerce.number().int().positive().optional(),
     assigneeId: z.coerce.bigint().optional(),
+    postProcessorId: z.coerce.bigint().optional(),
     quantity: z.coerce.number().int().positive().max(1_000_000),
     drawingUrl: httpUrl.optional(),
     dimensions: z.string().trim().max(255).optional(),
@@ -33,6 +34,7 @@ export const updateTaskSchema = {
       postProcessId: z.coerce.number().int().positive().nullable().optional(),
       systemId: z.coerce.number().int().positive().optional(),
       assigneeId: z.coerce.bigint().nullable().optional(),
+      postProcessorId: z.coerce.bigint().nullable().optional(),
       quantity: z.coerce.number().int().positive().max(1_000_000).optional(),
       drawingUrl: httpUrl.nullable().optional(),
       dimensions: z.string().trim().max(255).nullable().optional(),
@@ -44,7 +46,14 @@ export const updateTaskSchema = {
 export const updateStatusSchema = {
   params: idParam,
   body: z.object({
-    status: z.enum(['accepted', 'processing', 'completed', 'rejected', 'cancelled']),
+    status: z.enum([
+      'accepted',
+      'processing',
+      'post_processing',
+      'completed',
+      'rejected',
+      'cancelled',
+    ]),
     note: z.string().trim().max(2000).optional(),
   }),
 };
@@ -57,7 +66,15 @@ export const listTasksSchema = {
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(100).default(20),
     status: z
-      .enum(['pending', 'accepted', 'processing', 'completed', 'rejected', 'cancelled'])
+      .enum([
+        'pending',
+        'accepted',
+        'processing',
+        'post_processing',
+        'completed',
+        'rejected',
+        'cancelled',
+      ])
       .optional(),
     systemId: z.coerce.number().int().positive().optional(),
     assigneeId: z.coerce.bigint().optional(),

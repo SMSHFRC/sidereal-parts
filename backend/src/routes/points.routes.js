@@ -14,10 +14,10 @@ const router = Router();
 
 router.use(authenticate);
 
-// 轉讓：加工者本人發起（admin 也可）
+// 轉讓：member 本人發起（admin 也可）
 router.post(
   '/transfer',
-  requireRole(ROLES.PROCESSOR, ROLES.ADMIN),
+  requireRole(ROLES.MEMBER, ROLES.ADMIN),
   validate(transferSchema),
   pointsController.transfer,
 );

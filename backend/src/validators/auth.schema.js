@@ -20,8 +20,8 @@ export const registerSchema = {
   body: z.object({
     username,
     password,
-    // 開放註冊只允許 designer / processor；建立 admin 須由既有 admin 操作
-    role: z.enum(['designer', 'processor']),
+    // 開放註冊只允許 member；建立 admin 須由既有 admin 操作
+    role: z.enum(['member']).default('member'),
   }),
 };
 

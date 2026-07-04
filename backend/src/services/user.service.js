@@ -13,6 +13,19 @@ const publicUser = {
 };
 
 export const userService = {
+  // member 清單（供 admin 後門指派用；僅回 id/username，非敏感資料）
+  async listMembers() {
+    return prisma.user.findMany({
+      where: { isActive: true, role: { name: ROLES.MEMBER } },
+      select: { id: true, username: true },
+      orderBy: { id: 'asc' },
+    });
+  },
+
+  async listProcessors() {
+    return this.listMembers();
+  },
+
   async list({ page, limit }) {
     const [items, total] = await Promise.all([
       prisma.user.findMany({

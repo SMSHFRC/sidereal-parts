@@ -28,6 +28,16 @@ export const taskController = {
     res.json({ success: true, data: serialize(result) });
   }),
 
+  claim: asyncHandler(async (req, res) => {
+    const result = await taskService.claim(req.params.id, req.user);
+    res.json({ success: true, data: serialize(result) });
+  }),
+
+  claimPostProcess: asyncHandler(async (req, res) => {
+    const result = await taskService.claimPostProcess(req.params.id, req.user);
+    res.json({ success: true, data: serialize(result) });
+  }),
+
   remove: asyncHandler(async (req, res) => {
     const result = await taskService.remove(req.params.id, req.user);
     res.json({ success: true, data: serialize(result) });

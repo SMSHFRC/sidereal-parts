@@ -1,0 +1,4 @@
+.claude/
+.preview-*.pid
+*.log
+*.tsbuildinfo

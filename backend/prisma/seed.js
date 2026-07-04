@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   // 角色
-  const roleNames = ['admin', 'designer', 'processor'];
+  const roleNames = ['admin', 'member'];
   for (const name of roleNames) {
     await prisma.role.upsert({ where: { name }, update: {}, create: { name } });
   }

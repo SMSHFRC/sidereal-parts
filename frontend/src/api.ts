@@ -1,0 +1,353 @@
+// API 層：型別依實際後端回應（2026-07-04 對本機後端實測 JSON）產生。
+// 注意：所有 BigInt 欄位（id、totalPoints、partNumberSeq）序列化為「字串」。
+
+export const API_BASE: string =
+  import.meta.env.VITE_API_BASE ?? 'https://sidereal-parts.onrender.com/api/v1';
+
+export const HEALTH_URL = API_BASE.replace(/\/api\/v1\/?$/, '') + '/health';
+
+// ---------- 型別 ----------
+export type Role = 'admin' | 'member';
+
+export type TaskStatus =
+  | 'pending'
+  | 'accepted'
+  | 'processing'
+  | 'post_processing'
+  | 'completed'
+  | 'rejected'
+  | 'cancelled';
+
+export interface Ref {
+  code: string;
+  name: string;
+}
+export interface UserRef {
+  id: string;
+  username: string;
+}
+
+export interface OptionRef extends Ref {
+  id: number;
+}
+
+export interface MetaOptions {
+  systems: OptionRef[];
+  methods: OptionRef[];
+  materials: OptionRef[];
+  postProcesses: OptionRef[];
+}
+
+export interface Task {
+  id: string;
+  partNumber: string;
+  partNumberPrefix: string;
+  partNumberSeq: string;
+  manufacturingMethodId: number;
+  systemId: number;
+  materialId: number | null;
+  postProcessId: number | null;
+  creatorId: string;
+  assigneeId: string | null;
+  postProcessorId: string | null;
+  quantity: number;
+  rewardPoints: number;
+  drawingUrl: string | null;
+  dimensions: string | null;
+  note: string | null;
+  status: TaskStatus;
+  createdAt: string;
+  updatedAt: string;
+  system: Ref;
+  manufacturingMethod: Ref;
+  material: Ref | null;
+  postProcess: Ref | null;
+  creator: UserRef;
+  assignee: UserRef | null;
+  postProcessor: UserRef | null;
+}
+
+export interface Me {
+  id: string;
+  username: string;
+  role: Role;
+  totalPoints: string; // BigInt -> string
+  createdAt: string;
+}
+
+export interface AuthPayload {
+  user: { id: string; username: string; role: Role };
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface Paged<T> {
+  items: T[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
+export interface CreateTaskInput {
+  systemId: number;
+  manufacturingMethodId: number;
+  quantity: number;
+  materialId?: number;
+  postProcessId?: number;
+  assigneeId?: string; // BigInt id 以字串傳遞
+  postProcessorId?: string;
+  drawingUrl?: string;
+  dimensions?: string;
+  note?: string;
+}
+
+export class ApiError extends Error {
+  code: string;
+  status: number;
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+// ---------- token 儲存 ----------
+const ACCESS_KEY = 'pt.access';
+const REFRESH_KEY = 'pt.refresh';
+
+export const tokens = {
+  get access() {
+    return localStorage.getItem(ACCESS_KEY);
+  },
+  get refresh() {
+    return localStorage.getItem(REFRESH_KEY);
+  },
+  set(access: string, refresh: string) {
+    localStorage.setItem(ACCESS_KEY, access);
+    localStorage.setItem(REFRESH_KEY, refresh);
+  },
+  clear() {
+    localStorage.removeItem(ACCESS_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+  },
+};
+
+// 401 且 refresh 失敗時通知 AuthProvider 登出
+let onUnauthorized: () => void = () => {};
+export function setUnauthorizedHandler(fn: () => void) {
+  onUnauthorized = fn;
+}
+
+// ---------- fetch 包裝 ----------
+async function raw(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers: Record<string, string> = {
+    ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+    ...((init.headers as Record<string, string>) ?? {}),
+  };
+  const access = tokens.access;
+  if (access && !headers.Authorization) headers.Authorization = `Bearer ${access}`;
+  return fetch(API_BASE + path, { ...init, headers });
+}
+
+// refresh 單一航班：多個請求同時 401 只打一次 /auth/refresh
+let refreshing: Promise<boolean> | null = null;
+async function tryRefresh(): Promise<boolean> {
+  if (!refreshing) {
+    refreshing = (async () => {
+      const rt = tokens.refresh;
+      if (!rt) return false;
+      try {
+        const res = await fetch(API_BASE + '/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: rt }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) return false;
+        const data = json.data as AuthPayload;
+        tokens.set(data.accessToken, data.refreshToken); // 輪替：兩把都換新
+        return true;
+      } catch {
+        return false;
+      }
+    })().finally(() => {
+      refreshing = null;
+    });
+  }
+  return refreshing;
+}
+
+export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  let res: Response;
+  try {
+    res = await raw(path, init);
+  } catch {
+    throw new ApiError(0, 'NETWORK', '無法連線到伺服器');
+  }
+
+  if (res.status === 401 && retry && !path.startsWith('/auth/login')) {
+    if (await tryRefresh()) return api<T>(path, init, false);
+    tokens.clear();
+    onUnauthorized();
+    throw new ApiError(401, 'UNAUTHORIZED', '登入已過期，請重新登入');
+  }
+
+  let json: { success: boolean; data?: T; error?: { code: string; message: string } };
+  try {
+    json = await res.json();
+  } catch {
+    throw new ApiError(res.status, 'BAD_RESPONSE', `伺服器回應異常（${res.status}）`);
+  }
+  if (!res.ok || !json.success) {
+    const e = json.error ?? { code: 'UNKNOWN', message: '未知錯誤' };
+    throw new ApiError(res.status, e.code, e.message);
+  }
+  return json.data as T;
+}
+
+// ---------- 端點 ----------
+export const authApi = {
+  login: (username: string, password: string) =>
+    api<AuthPayload>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  me: () => api<Me>('/auth/me'),
+  logout: () => {
+    const rt = tokens.refresh;
+    tokens.clear();
+    if (rt)
+      api('/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken: rt }) }).catch(
+        () => {},
+      );
+  },
+};
+
+export const usersApi = {
+  members: () => api<UserRef[]>('/users/members'),
+  processors: () => api<UserRef[]>('/users/processors'),
+};
+
+export const taskApi = {
+  list: (query = '') => api<Paged<Task>>(`/tasks?limit=100${query ? `&${query}` : ''}`),
+  get: (id: string) => api<Task>(`/tasks/${id}`),
+  create: (input: CreateTaskInput) =>
+    api<Task>('/tasks', { method: 'POST', body: JSON.stringify(input) }),
+  claim: (id: string) => api<Task>(`/tasks/${id}/claim`, { method: 'POST' }),
+  updateStatus: (id: string, status: TaskStatus) =>
+    api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  claimPostProcess: (id: string) =>
+    api<Task>(`/tasks/${id}/claim-post-process`, { method: 'POST' }),
+};
+
+export const metaApi = {
+  options: () => api<MetaOptions>('/meta/options'),
+};
+
+// ---------- 狀態機（與 backend/src/constants/taskStatus.js 對齊） ----------
+// 有後處理：processing -> post_processing(交棒，加工分入帳) -> completed(後處理者，後處理分入帳)
+// 無後處理：processing -> completed(加工者，全額入帳)
+export const TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  pending: ['accepted', 'cancelled'],
+  accepted: ['processing', 'rejected', 'cancelled'],
+  processing: ['post_processing', 'completed', 'rejected', 'cancelled'],
+  post_processing: ['completed', 'cancelled'],
+  completed: [],
+  rejected: [],
+  cancelled: [],
+};
+
+/** 依目前使用者與任務狀態，回傳可執行的合法目標狀態（非法的直接不顯示）
+ *  接單制：pending 未指派 = 任務池，member 按「接單」即認領並接受 */
+export function allowedActions(task: Task, me: Me): TaskStatus[] {
+  const hasPost = task.postProcessId != null;
+  const isOpenPool = task.status === 'pending' && !task.assignee;
+  // 條件式限制：有後處理必經 post_processing；無後處理不可進 post_processing
+  const nexts = TRANSITIONS[task.status].filter((s) => {
+    if (s === 'post_processing') return hasPost;
+    if (s === 'completed' && task.status === 'processing') return !hasPost;
+    // 任務池任務沒有「放棄」（還沒接就談不上放棄）；admin 也不能替人接單
+    if (isOpenPool && s === 'accepted') return me.role === 'member';
+    if (isOpenPool && s === 'rejected') return false;
+    return true;
+  });
+  if (me.role === 'admin') return nexts;
+  return nexts.filter((s) => {
+    if (s === 'cancelled') return task.creator.id === me.id;
+    if (s === 'completed' && task.status === 'post_processing')
+      return task.postProcessor?.id === me.id;
+    if (s === 'accepted' && isOpenPool) return true; // 接單
+    return task.assignee?.id === me.id;
+  });
+}
+
+/** 是否可接後處理（post_processing 且尚無後處理者，加工者皆可認領） */
+export function canClaimPostProcess(task: Task, me: Me): boolean {
+  return (
+    task.status === 'post_processing' && !task.postProcessor && me.role === 'member'
+  );
+}
+
+export const STATUS_LABEL: Record<TaskStatus, string> = {
+  pending: '待接受',
+  accepted: '已接受',
+  processing: '加工中',
+  post_processing: '後處理中',
+  completed: '已完成',
+  rejected: '已放棄',
+  cancelled: '已取消',
+};
+
+export const ACTION_LABEL: Record<TaskStatus, string> = {
+  pending: '—',
+  accepted: '接受',
+  rejected: '放棄回池',
+  processing: '開始加工',
+  post_processing: '加工完成，交後處理',
+  completed: '完成',
+  cancelled: '取消任務',
+};
+
+export const ROLE_LABEL: Record<Role, string> = {
+  admin: '管理員',
+  member: '隊員',
+};
+
+// ---------- 主檔選項 fallback ----------
+// 啟動時優先抓 /meta/options；失敗時用這份 seed 對應值，避免主檔端點暫時故障時整站不能建單。
+export const FALLBACK_SYSTEM_OPTIONS = [
+  { id: 1, label: 'ARM — 機械手臂' },
+  { id: 2, label: 'CHS — 底盤系統' },
+  { id: 3, label: 'PWR — 電源模組' },
+];
+export const FALLBACK_METHOD_OPTIONS = [
+  { id: 1, label: 'CNC 銑削' },
+  { id: 2, label: '車床' },
+  { id: 3, label: '3D 列印' },
+];
+export const FALLBACK_MATERIAL_OPTIONS = [
+  { id: 1, label: '鋁 6061' },
+  { id: 2, label: '不鏽鋼 304' },
+  { id: 3, label: 'PLA' },
+];
+export const FALLBACK_POST_PROCESS_OPTIONS = [
+  { id: 1, label: '陽極處理' },
+  { id: 2, label: '噴砂' },
+  { id: 3, label: '拋光' },
+];
+
+export function toSelectOptions(items: OptionRef[]) {
+  return items.map((o) => ({ id: o.id, label: `${o.code} — ${o.name}` }));
+}
+
+export function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleString('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}

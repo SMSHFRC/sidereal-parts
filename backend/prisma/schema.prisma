@@ -15,6 +15,7 @@ enum TaskStatus {
   pending
   accepted
   processing
+  post_processing
   completed
   rejected
   cancelled
@@ -22,7 +23,7 @@ enum TaskStatus {
 
 model Role {
   id    Int    @id @default(autoincrement())
-  name  String @unique // 'admin' | 'designer' | 'processor'
+  name  String @unique // 'admin' | 'member'
   users User[]
 
   @@map("roles")
@@ -41,6 +42,7 @@ model User {
   role              Role               @relation(fields: [roleId], references: [id])
   createdTasks      Task[]             @relation("Creator")
   assignedTasks     Task[]             @relation("Assignee")
+  postProcessTasks  Task[]             @relation("PostProcessor")
   pointsLedger      UserPointsLedger[]
   sentTransfers     PointTransfer[]    @relation("TransferFrom")
   receivedTransfers PointTransfer[]    @relation("TransferTo")
@@ -125,6 +127,7 @@ model Task {
 
   creatorId             BigInt     @map("creator_id")
   assigneeId            BigInt?    @map("assignee_id")
+  postProcessorId       BigInt?    @map("post_processor_id") // 後處理者（與加工者可為不同人）
 
   quantity              Int
   rewardPoints          Int        @default(0) @map("reward_points")
@@ -142,11 +145,13 @@ model Task {
   postProcess         PostProcess?        @relation(fields: [postProcessId], references: [id])
   creator             User                @relation("Creator", fields: [creatorId], references: [id])
   assignee            User?               @relation("Assignee", fields: [assigneeId], references: [id])
+  postProcessor       User?               @relation("PostProcessor", fields: [postProcessorId], references: [id])
   statusHistory       TaskStatusHistory[]
   pointsLedger        UserPointsLedger[]
 
   @@unique([partNumberPrefix, partNumberSeq])
   @@index([assigneeId])
+  @@index([postProcessorId])
   @@index([creatorId])
   @@index([status])
   @@index([systemId])
@@ -179,7 +184,9 @@ model UserPointsLedger {
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   task Task? @relation(fields: [taskId], references: [id])
 
-  @@unique([taskId, userId]) // 同一任務對同一人只發放一次
+  // 同一任務對同一人、同一事由只發放一次
+  // （加工分與後處理分事由不同，同一人兼任兩角色時可各領一次）
+  @@unique([taskId, userId, reason])
   @@index([userId])
   @@map("user_points_ledger")
 }
