@@ -88,7 +88,32 @@ FRONTEND_URL=http://localhost:5173
 
 ---
 
-## Step 3：每位隊員連結自己的帳號
+## Step 3：建立 Onshape 側邊面板 Extension（M4）
+
+在同一個 Onshape OAuth application 裡新增 Extension：
+
+| 欄位 | 填什麼 |
+|---|---|
+| **Location** | `Element right panel` |
+| **Action URL** | 見下方 |
+
+正式 Action URL：
+
+```txt
+https://sidereal-parts.pages.dev/onshape-panel?did={$documentId}&wvm=w&wvmid={$workspaceId}&eid={$elementId}
+```
+
+開發期若要測本機前端，可以先用 cloudflared/ngrok tunnel，Action URL 指向：
+
+```txt
+https://<你的-tunnel-domain>/onshape-panel?did={$documentId}&wvm=w&wvmid={$workspaceId}&eid={$elementId}
+```
+
+設定完成後，把 app 分享給隊伍 Onshape team。隊員重新整理 Onshape 文件後，右側面板會出現 sidereal-parts app。
+
+---
+
+## Step 4：每位隊員連結自己的帳號
 
 1. 登入系統 → 按「**連結 Onshape**」（前端 P2 上線後出現；目前可用 API：`GET /api/v1/onshape/auth-url` 取得跳轉網址）
 2. 跳轉到 Onshape 授權頁 → 檢查權限只有「讀取文件」→ **Authorize**

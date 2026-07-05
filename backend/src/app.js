@@ -33,8 +33,18 @@ const isAllowedOrigin = (origin) => {
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
-// 安全 HTTP headers
-app.use(helmet());
+// 安全 HTTP headers；Onshape extension 會以 iframe 方式嵌入前端/流程頁
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'frame-ancestors': ["'self'", 'https://cad.onshape.com', 'https://*.onshape.com'],
+      },
+    },
+    frameguard: false,
+  }),
+);
 
 // CORS 白名單
 app.use(

@@ -9,6 +9,7 @@ import Board from './pages/Board';
 import TaskDetail from './pages/TaskDetail';
 import NewTask from './pages/NewTask';
 import ImportOnshape from './pages/ImportOnshape';
+import OnshapePanel from './pages/OnshapePanel';
 
 // ---- 喚醒畫面：Render free tier 冷啟動約 30–60 秒 ----
 function WakeGate({ children }: { children: ReactNode }) {
@@ -62,7 +63,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const { user, booting } = useAuth();
   const loc = useLocation();
   if (booting) return <Spinner label="驗證登入中…" />;
-  if (!user) return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
+  if (!user) return <Navigate to="/login" state={{ from: `${loc.pathname}${loc.search}` }} replace />;
   return <>{children}</>;
 }
 
@@ -149,6 +150,14 @@ export default function App() {
               <Layout>
                 <ImportOnshape />
               </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/onshape-panel"
+          element={
+            <RequireAuth>
+              <OnshapePanel />
             </RequireAuth>
           }
         />

@@ -11,8 +11,9 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const returnTo = (loc.state as { from?: string })?.from ?? '/';
 
-  if (!booting && user) return <Navigate to="/" replace />;
+  if (!booting && user) return <Navigate to={returnTo} replace />;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -20,7 +21,7 @@ export default function Login() {
     setBusy(true);
     try {
       await login(username.trim(), password);
-      nav((loc.state as { from?: string })?.from ?? '/', { replace: true });
+      nav(returnTo, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '登入失敗，請稍後再試');
     } finally {
