@@ -20,14 +20,14 @@
 | Root directory | `frontend` |
 | Build command | `npm run build` |
 | Build output directory | `dist` |
-| Environment variable | `VITE_API_BASE=https://sidereal-parts.onrender.com/api/v1` |
+| Environment variable | `VITE_API_BASE=https://sidereal-parts-api.onrender.com/api/v1` |
 
 ### Render Backend
 
 | 欄位 | 值 |
 |---|---|
-| Backend URL | `https://sidereal-parts.onrender.com` |
-| API base | `https://sidereal-parts.onrender.com/api/v1` |
+| Backend URL | `https://sidereal-parts-api.onrender.com` |
+| API base | `https://sidereal-parts-api.onrender.com/api/v1` |
 | CORS_ORIGINS 範例 | `https://你的-pages網址.pages.dev,https://*.pages.dev,http://localhost:5173` |
 
 ## 1. 部署前確認
@@ -88,7 +88,7 @@ Build output directory: dist
 在 Cloudflare Pages 的 `Environment variables` 加入：
 
 ```text
-VITE_API_BASE=https://sidereal-parts.onrender.com/api/v1
+VITE_API_BASE=https://sidereal-parts-api.onrender.com/api/v1
 ```
 
 注意：
@@ -118,6 +118,17 @@ https://<hash>.sidereal-parts.pages.dev
 
 複製實際可開啟的 Pages 網址，下一步要填到 Render。
 
+## 5.5 綁自訂網域 part.team9501.org
+
+因為 `team9501.org` 已在同一個 Cloudflare 帳號，綁子網域最順（DNS 自動建）：
+
+1. Pages 專案 → **Custom domains** → **Set up a custom domain**
+2. 輸入 `part.team9501.org` → **Continue**
+3. Cloudflare 自動建 CNAME（`part` → `專案.pages.dev`）並簽 SSL → **Activate domain**
+4. 等狀態變 **Active**（同帳號通常 1–2 分鐘）
+
+正式對外網址即 `https://part.team9501.org`。
+
 ## 6. 設定 Render CORS
 
 進入 Render Dashboard：
@@ -138,11 +149,14 @@ Environment
 CORS_ORIGINS=https://你的-pages網址.pages.dev,https://*.pages.dev,http://localhost:5173
 ```
 
-範例：
+正式（含 team9501.org 自訂網域）：
 
 ```text
-CORS_ORIGINS=https://sidereal-parts.pages.dev,https://*.pages.dev,http://localhost:5173
+CORS_ORIGINS=https://part.team9501.org,https://*.pages.dev,http://localhost:5173
 ```
+
+同時（若已設定 Onshape）更新 `FRONTEND_URL=https://part.team9501.org`，
+讓 Onshape 授權完成後導回正式網址。
 
 存檔後讓 Render 重新部署。若沒有自動部署，點：
 
@@ -239,7 +253,7 @@ dist
 檢查 Cloudflare Pages 環境變數：
 
 ```text
-VITE_API_BASE=https://sidereal-parts.onrender.com/api/v1
+VITE_API_BASE=https://sidereal-parts-api.onrender.com/api/v1
 ```
 
 如果少了 `/api/v1`，前端會打錯 API。
@@ -322,5 +336,5 @@ http://localhost:5173
 後端 health check：
 
 ```text
-https://sidereal-parts.onrender.com/health
+https://sidereal-parts-api.onrender.com/health
 ```
