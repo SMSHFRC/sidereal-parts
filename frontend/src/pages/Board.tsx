@@ -81,12 +81,12 @@ function ViewTabs({
   counts: Record<ViewKey, number>;
 }) {
   return (
-    <div className="mb-3 grid grid-cols-4 gap-2">
+    <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0 sm:pb-0">
       {VIEWS.map((v) => (
         <button
           key={v.key}
           onClick={() => onChange(v.key)}
-          className={`min-h-11 rounded-lg px-2 text-sm font-medium ${
+          className={`min-h-10 shrink-0 rounded-lg px-3 text-sm font-medium sm:min-h-11 sm:shrink sm:px-2 ${
             active === v.key
               ? 'bg-slate-900 text-white'
               : 'border border-slate-300 bg-white text-slate-600'
@@ -173,12 +173,12 @@ export default function Board() {
       {claimNotice && <ClaimNotice {...claimNotice} />}
 
       {/* 手機：狀態切換 chips */}
-      <div className="mb-3 flex gap-2 md:hidden">
+      <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1 md:hidden">
         {grouped.map((c) => (
           <button
             key={c.key}
             onClick={() => setActive(c.key)}
-            className={`min-h-11 flex-1 rounded-lg px-2 text-sm font-medium ${
+            className={`min-h-10 shrink-0 rounded-lg px-3 text-sm font-medium ${
               active === c.key
                 ? 'bg-slate-900 text-white'
                 : 'border border-slate-300 bg-white text-slate-600'
