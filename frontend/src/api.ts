@@ -2,7 +2,7 @@
 // 注意：所有 BigInt 欄位（id、totalPoints、partNumberSeq）序列化為「字串」。
 
 export const API_BASE: string =
-  import.meta.env.VITE_API_BASE ?? 'https://sidereal-parts.onrender.com/api/v1';
+  import.meta.env.VITE_API_BASE ?? 'https://sidereal-parts-api.onrender.com/api/v1';
 
 export const HEALTH_URL = API_BASE.replace(/\/api\/v1\/?$/, '') + '/health';
 
