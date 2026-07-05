@@ -12,6 +12,18 @@ const schema = z.object({
   JWT_ACCESS_TTL: z.string().default('1h'),
   JWT_REFRESH_TTL: z.string().default('7d'),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
+
+  // ---- M3: Onshape OAuth（皆選填；未設定時 Onshape 功能回 503）----
+  ONSHAPE_CLIENT_ID: z.string().optional(),
+  ONSHAPE_CLIENT_SECRET: z.string().optional(),
+  ONSHAPE_API_BASE: z.string().default('https://cad.onshape.com/api/v10'),
+  ONSHAPE_OAUTH_BASE: z.string().default('https://oauth.onshape.com'),
+  // OAuth callback 的完整網址（須與 Onshape dev portal 設定一致）
+  ONSHAPE_REDIRECT_URI: z.string().optional(),
+  // 授權完成後把使用者導回前端的網址
+  FRONTEND_URL: z.string().default('http://localhost:5173'),
+  // token 加密金鑰（選填；預設由 JWT_REFRESH_SECRET 衍生）
+  ONSHAPE_TOKEN_KEY: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -26,4 +38,7 @@ export const env = {
   ...raw,
   isProd: raw.NODE_ENV === 'production',
   corsOrigins: raw.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
+  onshapeEnabled: Boolean(raw.ONSHAPE_CLIENT_ID && raw.ONSHAPE_CLIENT_SECRET),
+  onshapeRedirectUri:
+    raw.ONSHAPE_REDIRECT_URI ?? `http://localhost:${raw.PORT}/api/v1/onshape/callback`,
 };

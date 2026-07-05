@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { prisma } from '../config/prisma.js';
 import { ApiError } from '../utils/ApiError.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
@@ -14,7 +15,8 @@ const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 與 JWT_REFRESH_TTL 一致（
 const issueTokens = async (user) => {
   const payload = { sub: user.id.toString(), role: user.role.name, username: user.username };
   const accessToken = signAccessToken(payload);
-  const refreshToken = signRefreshToken({ sub: user.id.toString() });
+  // jti：同一秒並發登入也會得到不同 token（refresh_tokens.token_hash 為 unique）
+  const refreshToken = signRefreshToken({ sub: user.id.toString(), jti: crypto.randomUUID() });
 
   // 只存 refresh token 的 hash，供撤銷/輪替
   await prisma.refreshToken.create({

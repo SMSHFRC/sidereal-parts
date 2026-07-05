@@ -3,10 +3,12 @@ import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { HEALTH_URL, ROLE_LABEL } from './api';
 import { useAuth } from './auth';
 import { Spinner } from './ui';
+import { OnshapeConnectButton } from './components/Onshape';
 import Login from './pages/Login';
 import Board from './pages/Board';
 import TaskDetail from './pages/TaskDetail';
 import NewTask from './pages/NewTask';
+import ImportOnshape from './pages/ImportOnshape';
 
 // ---- 喚醒畫面：Render free tier 冷啟動約 30–60 秒 ----
 function WakeGate({ children }: { children: ReactNode }) {
@@ -70,20 +72,30 @@ function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="mx-auto min-h-dvh max-w-5xl pb-8">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
-        <Link to="/" className="text-base font-bold text-slate-900">
+        <Link to="/" className="flex items-center gap-2 text-base font-bold text-slate-900">
+          <img src="/logo.png" alt="FRC 9501" className="h-8 w-8 rounded-lg" />
           零件任務
         </Link>
         {canCreate && (
-          <Link
-            to="/tasks/new"
-            className="flex min-h-9 items-center rounded-lg bg-slate-900 px-3 text-sm font-medium text-white active:bg-slate-700"
-          >
-            ＋ 新增
-          </Link>
+          <>
+            <Link
+              to="/tasks/new"
+              className="flex min-h-9 items-center rounded-lg bg-slate-900 px-3 text-sm font-medium text-white active:bg-slate-700"
+            >
+              ＋ 新增
+            </Link>
+            <Link
+              to="/import"
+              className="flex min-h-9 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 active:bg-slate-100"
+            >
+              匯入
+            </Link>
+          </>
         )}
         <div className="ml-auto flex items-center gap-2 text-xs text-slate-600">
           {user && (
             <>
+              <OnshapeConnectButton />
               <span className="hidden sm:inline">
                 {user.username}（{ROLE_LABEL[user.role]}）
               </span>
@@ -126,6 +138,16 @@ export default function App() {
             <RequireAuth>
               <Layout>
                 <NewTask />
+              </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/import"
+          element={
+            <RequireAuth>
+              <Layout>
+                <ImportOnshape />
               </Layout>
             </RequireAuth>
           }

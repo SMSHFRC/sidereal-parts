@@ -65,6 +65,85 @@ export interface Task {
   creator: UserRef;
   assignee: UserRef | null;
   postProcessor: UserRef | null;
+  // M3：Onshape 參照（drawingUrl 為 Onshape 連結時後端自動解析）
+  onshapeDid: string | null;
+  onshapeWvm: string | null;
+  onshapeWvmId: string | null;
+  onshapeEid: string | null;
+  onshapePartId: string | null;
+  onshapeConfig: string | null;
+  onshapeRevision: string | null;
+  onshapeThumbnailUrl: string | null;
+  onshapeImageMeta: unknown | null;
+  importBatchId: string | null;
+}
+
+// ---------- M3: Onshape ----------
+export interface OnshapeStatus {
+  enabled: boolean;
+  connected: boolean;
+  connectedAt: string | null;
+}
+
+export interface OnshapeRef {
+  did: string;
+  wvm: string;
+  wvmId: string;
+  eid: string | null;
+}
+
+export interface OnshapeResolved {
+  ref: OnshapeRef;
+  documentName: string;
+  ownerName: string | null;
+  thumbnailPath: string | null;
+}
+
+export interface OnshapePart {
+  partId: string;
+  name: string;
+  material: string | null;
+}
+
+export interface OnshapeBomItem {
+  name: string | null;
+  quantity: number;
+  material: string | null;
+  partNumber: string | null;
+  sourceDocumentId: string | null;
+  sourceElementId: string | null;
+  sourcePartId: string | null;
+  sourceConfig: string | null;
+  classification: 'made' | 'cots';
+  cotsReason: string | null;
+}
+
+export interface OnshapeImportPreview {
+  ref: OnshapeRef;
+  documentName: string;
+  ownerName: string | null;
+  thumbnailPath: string | null;
+  made: OnshapeBomItem[];
+  cots: OnshapeBomItem[];
+  summary: {
+    total: number;
+    madeCount: number;
+    cotsCount: number;
+    imageCount: number;
+    imageFailedCount: number;
+  };
+}
+
+export interface OnshapeImportResult {
+  batchId: string;
+  created: number;
+  updated: number;
+  cotsCount: number;
+  imageCount: number;
+  imageFailedCount: number;
+  documentName: string;
+  tasks: Array<{ id: string; partNumber: string; status: TaskStatus }>;
+  cots: OnshapeBomItem[];
 }
 
 export interface Me {
@@ -247,6 +326,49 @@ export const taskApi = {
 export const metaApi = {
   options: () => api<MetaOptions>('/meta/options'),
 };
+
+export const onshapeApi = {
+  status: () => api<OnshapeStatus>('/onshape/status'),
+  authUrl: () => api<{ url: string }>('/onshape/auth-url'),
+  disconnect: () => api<{ disconnected: boolean }>('/onshape/connection', { method: 'DELETE' }),
+  resolve: (url: string) =>
+    api<OnshapeResolved>('/onshape/resolve', { method: 'POST', body: JSON.stringify({ url }) }),
+  parts: (r: { did: string; wvm: string; wvmId: string; eid: string }) =>
+    api<OnshapePart[]>(`/onshape/parts?did=${r.did}&wvm=${r.wvm}&wvmId=${r.wvmId}&eid=${r.eid}`),
+  importPreview: (url: string) =>
+    api<OnshapeImportPreview>('/onshape/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
+  importBom: (input: {
+    url: string;
+    systemId: number;
+    manufacturingMethodId: number;
+    materialId?: number;
+    postProcessId?: number;
+  }) =>
+    api<OnshapeImportResult>('/onshape/import', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+};
+
+/** 縮圖需帶 JWT，<img src> 無法帶 header → fetch blob 轉 object URL。
+ *  回傳 null 表示未連結 Onshape（428）；其他錯誤丟 ApiError。 */
+export async function fetchOnshapeThumbnail(r: {
+  did: string;
+  wvm: string;
+  wvmId: string;
+  eid: string;
+}): Promise<string | null> {
+  const path = `/onshape/thumbnail?did=${r.did}&wvm=${r.wvm}&wvmId=${r.wvmId}&eid=${r.eid}`;
+  const res = await fetch(API_BASE + path, {
+    headers: { Authorization: `Bearer ${tokens.access}` },
+  });
+  if (res.status === 428) return null; // 尚未連結 Onshape
+  if (!res.ok) throw new ApiError(res.status, 'THUMBNAIL_ERROR', '縮圖載入失敗');
+  return URL.createObjectURL(await res.blob());
+}
 
 // ---------- 狀態機（與 backend/src/constants/taskStatus.js 對齊） ----------
 // 有後處理：processing -> post_processing(交棒，加工分入帳) -> completed(後處理者，後處理分入帳)

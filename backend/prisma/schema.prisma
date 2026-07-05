@@ -43,13 +43,70 @@ model User {
   createdTasks      Task[]             @relation("Creator")
   assignedTasks     Task[]             @relation("Assignee")
   postProcessTasks  Task[]             @relation("PostProcessor")
+  onshapeAccount    OnshapeAccount?
   pointsLedger      UserPointsLedger[]
   sentTransfers     PointTransfer[]    @relation("TransferFrom")
   receivedTransfers PointTransfer[]    @relation("TransferTo")
   refreshTokens     RefreshToken[]
+  onshapeImportBatches OnshapeImportBatch[]
 
   @@index([roleId])
   @@map("users")
+}
+
+model OnshapeImportBatch {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt   @map("user_id")
+  sourceUrl String   @map("source_url")
+  documentId String  @map("document_id")
+  wvm       String
+  wvmId     String   @map("wvm_id")
+  elementId String   @map("element_id")
+  summary   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
+  cotsItems CotsItem[]
+
+  @@index([userId])
+  @@index([documentId, elementId])
+  @@map("onshape_import_batches")
+}
+
+model CotsItem {
+  id          BigInt   @id @default(autoincrement())
+  batchId     BigInt   @map("batch_id")
+  name        String?
+  partNumber  String?  @map("part_number")
+  quantity    Int      @default(0)
+  material    String?
+  sourceDocumentId String? @map("source_document_id")
+  sourceElementId  String? @map("source_element_id")
+  thumbnailUrl String? @map("thumbnail_url")
+  raw         Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  batch OnshapeImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@map("cots_items")
+}
+
+// M3：每位使用者的 Onshape OAuth 綁定（token 以 AES-256-GCM 加密存放）
+model OnshapeAccount {
+  id            BigInt   @id @default(autoincrement())
+  userId        BigInt   @unique @map("user_id")
+  accessToken   String   @map("access_token") // 加密
+  refreshToken  String   @map("refresh_token") // 加密
+  expiresAt     DateTime @map("expires_at")
+  onshapeUserId String?  @map("onshape_user_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("onshape_accounts")
 }
 
 model RefreshToken {
@@ -132,6 +189,18 @@ model Task {
   quantity              Int
   rewardPoints          Int        @default(0) @map("reward_points")
   drawingUrl            String?    @map("drawing_url")
+
+  // M3：Onshape 參照（由 drawingUrl 解析或零件選擇器帶入）
+  onshapeDid    String? @map("onshape_did") // document id
+  onshapeWvm    String? @map("onshape_wvm") // 'w' | 'v' | 'm'
+  onshapeWvmId  String? @map("onshape_wvm_id") // workspace/version/microversion id
+  onshapeEid    String? @map("onshape_eid") // element id
+  onshapePartId String? @map("onshape_part_id") // 選到特定零件時
+  onshapeConfig String? @map("onshape_config")
+  onshapeRevision String? @map("onshape_revision")
+  onshapeThumbnailUrl String? @map("onshape_thumbnail_url")
+  onshapeImageMeta Json? @map("onshape_image_meta")
+  importBatchId BigInt? @map("import_batch_id")
   dimensions            String?
   note                  String?
   status                TaskStatus @default(pending)
@@ -148,6 +217,7 @@ model Task {
   postProcessor       User?               @relation("PostProcessor", fields: [postProcessorId], references: [id])
   statusHistory       TaskStatusHistory[]
   pointsLedger        UserPointsLedger[]
+  importBatch         OnshapeImportBatch? @relation(fields: [importBatchId], references: [id])
 
   @@unique([partNumberPrefix, partNumberSeq])
   @@index([assigneeId])
@@ -155,6 +225,8 @@ model Task {
   @@index([creatorId])
   @@index([status])
   @@index([systemId])
+  @@index([importBatchId])
+  @@index([onshapeDid, onshapeEid, onshapePartId])
   @@map("tasks")
 }
 

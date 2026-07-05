@@ -3,6 +3,18 @@ import { ApiError } from '../utils/ApiError.js';
 import { nextPartNumber } from '../utils/partNumber.js';
 import { ROLES } from '../constants/roles.js';
 import { TASK_STATUS, isValidTransition } from '../constants/taskStatus.js';
+import { parseOnshapeUrl } from '../utils/onshapeUrl.js';
+
+// M3：drawingUrl 為 Onshape 連結時自動解析出參照欄位（縮圖/零件查詢用）
+const onshapeFields = (drawingUrl) => {
+  const r = drawingUrl ? parseOnshapeUrl(drawingUrl) : null;
+  return {
+    onshapeDid: r?.did ?? null,
+    onshapeWvm: r?.wvm ?? null,
+    onshapeWvmId: r?.wvmId ?? null,
+    onshapeEid: r?.eid ?? null,
+  };
+};
 
 // 積分規則：加工分 5/件、後處理分 2/件（拆帳發給不同角色）
 const MACHINING_POINTS_PER_UNIT = 5;
@@ -73,6 +85,7 @@ export const taskService = {
           quantity: data.quantity,
           rewardPoints,
           drawingUrl: data.drawingUrl ?? null,
+          ...onshapeFields(data.drawingUrl),
           dimensions: data.dimensions ?? null,
           note: data.note ?? null,
           creatorId: actor.id,
@@ -157,9 +170,12 @@ export const taskService = {
     }
     const rewardPoints = calcRewardPoints(quantity, Boolean(postProcessId));
 
+    // drawingUrl 有變動時，重新解析 Onshape 參照
+    const osPatch = data.drawingUrl !== undefined ? onshapeFields(data.drawingUrl) : {};
+
     return prisma.task.update({
       where: { id },
-      data: { ...data, rewardPoints },
+      data: { ...data, ...osPatch, rewardPoints },
       include: taskInclude,
     });
   },

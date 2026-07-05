@@ -31,8 +31,9 @@ export default function Login() {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-slate-900 px-6">
       <form onSubmit={submit} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-        <h1 className="text-xl font-bold text-slate-900">零件加工任務系統</h1>
-        <p className="mt-1 text-sm text-slate-500">請登入以繼續</p>
+        <img src="/logo.png" alt="FRC 9501" className="mx-auto h-20 w-20 rounded-2xl" />
+        <h1 className="mt-4 text-center text-xl font-bold text-slate-900">零件加工任務系統</h1>
+        <p className="mt-1 text-center text-sm text-slate-500">FRC 9501 — 請登入以繼續</p>
 
         <label className="mt-5 block text-sm font-medium text-slate-700">
           帳號

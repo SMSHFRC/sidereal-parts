@@ -12,6 +12,7 @@ import {
 } from '../api';
 import { useAuth } from '../auth';
 import { ErrorBox, Field, Spinner, StatusBadge } from '../ui';
+import { OnshapeCard } from '../components/Onshape';
 
 const BTN_STYLE: Partial<Record<TaskStatus, string>> = {
   accepted: 'bg-sky-600 active:bg-sky-700',
@@ -127,7 +128,9 @@ export default function TaskDetail() {
           </div>
         )}
 
-        {task.drawingUrl && (
+        <OnshapeCard task={task} />
+
+        {task.drawingUrl && !task.onshapeDid && (
           <a
             href={task.drawingUrl}
             target="_blank"
