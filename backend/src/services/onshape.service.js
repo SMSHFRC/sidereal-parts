@@ -106,7 +106,16 @@ async function apiFetch(userId, path, { raw = false } = {}) {
   return raw ? res : res.json();
 }
 
-const COTS_PART_PREFIX = /^(WCP|217|AM|REV|TTB|VEX|ANDYMARK|CTR|CTRE|REV-)/i;
+const VENDOR_PART_NUMBER = /^(?:WCP|TTB|REV|SDS|CTR|CTRE|VEX|VEN)[-_]?[A-Z0-9]+|^(?:AM|am)-[A-Z0-9]+|^217-\d+/i;
+const VENDOR_TEXT = /\b(?:AndyMark|VEXpro|VEX Robotics|West Coast Products|WCP|REV Robotics|The Thrifty Bot|TTB|CTRE|Cross The Road|Swerve Drive Specialties|SDS|McMaster|McMaster-Carr)\b/i;
+const TEAM_PART_NUMBER = /^[A-Z]{2,6}-\d{3,5}$/;
+const EMPTY_PROCESS_VALUES = new Set(['', '-', '--', 'n/a', 'na', 'none', 'null']);
+
+const normalizedText = (value) => String(value ?? '').trim();
+const hasValue = (value) => {
+  const text = normalizedText(value);
+  return Boolean(text && !EMPTY_PROCESS_VALUES.has(text.toLowerCase()));
+};
 
 const valueAt = (obj, keys) => {
   for (const key of keys) {
@@ -129,29 +138,55 @@ const sourcePartId = (source) =>
 const sourceConfig = (source) =>
   sourceValue(source, ['configuration', 'configurationId', 'config', 'sourceConfiguration']);
 
-const classifyBomRow = (row, rootDid) => {
+export const classifyBomRow = (row, rootDid) => {
   const src = row.itemSource ?? {};
   const docId = sourceDocumentId(src);
   const partId = sourcePartId(src);
-  const partNo = (row.partNumber ?? '').trim();
+  const partNo = normalizedText(row.partNumber);
+  const description = normalizedText(row.description);
   const externalDoc = docId && docId !== rootDid;
-  const vendorPrefix = partNo && COTS_PART_PREFIX.test(partNo);
+  const vendorPartNumber = partNo && VENDOR_PART_NUMBER.test(partNo);
+  const vendorDescription = description && VENDOR_TEXT.test(description);
+  const teamPartNumber = partNo && TEAM_PART_NUMBER.test(partNo) && !vendorPartNumber;
+  const hasManufacturingProcess = [
+    row.preProcess,
+    row.process1,
+    row.process2,
+    row.process,
+    row.manufacturingMethod,
+  ].some(hasValue);
+  const hasMaterial = hasValue(row.material);
   const missingPart = !partId;
-  const cots = Boolean(externalDoc || vendorPrefix || missingPart);
+  const externalCots = externalDoc && !hasManufacturingProcess && !hasMaterial && !teamPartNumber;
+  const cots = Boolean(vendorPartNumber || vendorDescription || externalCots);
+  const made = Boolean(!cots && (hasManufacturingProcess || teamPartNumber || hasMaterial || partId));
+  const classification = cots ? 'cots' : made ? 'made' : 'unknown';
+  const classificationReason = vendorPartNumber
+    ? 'vendor_part_number'
+    : vendorDescription
+      ? 'vendor_description'
+      : externalCots
+        ? 'external_document'
+        : hasManufacturingProcess
+          ? 'manufacturing_process'
+          : teamPartNumber
+            ? 'team_part_number'
+            : hasMaterial
+              ? 'material_present'
+              : partId
+                ? 'onshape_part'
+                : missingPart
+                  ? 'missing_part_id'
+                  : null;
   return {
     ...row,
     sourceDocumentId: docId ?? null,
     sourceElementId: sourceElementId(src) ?? null,
     sourcePartId: partId ?? null,
     sourceConfig: sourceConfig(src) ?? null,
-    classification: cots ? 'cots' : 'made',
-    cotsReason: externalDoc
-      ? 'external_document'
-      : vendorPrefix
-        ? 'vendor_part_number'
-        : missingPart
-          ? 'missing_part_id'
-          : null,
+    classification,
+    classificationReason,
+    cotsReason: classification === 'cots' ? classificationReason : null,
   };
 };
 
@@ -186,6 +221,12 @@ async function fetchAssemblyBomRows(userId, { did, wvm, wvmId, eid }) {
   const hMaterial = findHeaderId('material', '材料');
   const hPartNo = findHeaderId('part number', '零件編號');
 
+  const hDescription = findHeaderId('description', '??', '說明');
+  const hPreProcess = findHeaderId('pre process', 'pre-process', 'preprocess', '前處理');
+  const hProcess1 = findHeaderId('process 1', 'process1', '加工 1', '製程 1');
+  const hProcess2 = findHeaderId('process 2', 'process2', '加工 2', '製程 2');
+  const hProcess = findHeaderId('process', 'manufacturing process', '加工', '製程', '加工方式');
+
   return (bom.rows ?? []).map((r) => {
     const v = r.headerIdToValue ?? {};
     const material = v[hMaterial];
@@ -194,6 +235,11 @@ async function fetchAssemblyBomRows(userId, { did, wvm, wvmId, eid }) {
       quantity: Number(v[hQty] ?? 0) || 0,
       material: (material && typeof material === 'object' ? material.displayName : material) ?? null,
       partNumber: v[hPartNo] ?? null,
+      description: v[hDescription] ?? null,
+      preProcess: v[hPreProcess] ?? null,
+      process1: v[hProcess1] ?? null,
+      process2: v[hProcess2] ?? null,
+      process: v[hProcess] ?? null,
       itemSource: r.itemSource ?? null,
     };
   });
@@ -213,6 +259,7 @@ async function makeImportPreview(userId, url) {
   const classified = rows.map((row) => classifyBomRow(row, ref.did));
   const made = classified.filter((row) => row.classification === 'made');
   const cots = classified.filter((row) => row.classification === 'cots');
+  const unknown = classified.filter((row) => row.classification === 'unknown');
   const thumbnailPath = thumbnailPathFor(ref);
 
   return {
@@ -222,10 +269,12 @@ async function makeImportPreview(userId, url) {
     thumbnailPath,
     made,
     cots,
+    unknown,
     summary: {
       total: classified.length,
       madeCount: made.length,
       cotsCount: cots.length,
+      unknownCount: unknown.length,
       imageCount: thumbnailPath ? classified.length : 0,
       imageFailedCount: thumbnailPath ? 0 : classified.length,
     },

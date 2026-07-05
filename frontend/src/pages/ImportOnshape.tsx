@@ -222,6 +222,9 @@ export default function ImportOnshape() {
                 <p className="mt-1 text-sm text-slate-500">
                   自製件 {preview.summary.madeCount} · COTS {preview.summary.cotsCount} · 總列數 {preview.summary.total}
                 </p>
+                <p className="mt-1 text-sm text-amber-700">
+                  Needs review: {preview.summary.unknownCount ?? preview.unknown?.length ?? 0}
+                </p>
               </div>
               <button
                 onClick={importBom}
@@ -256,6 +259,9 @@ export default function ImportOnshape() {
           <div className="grid gap-4 md:grid-cols-2">
             <BomList title="自製件，將建立任務" items={preview.made} />
             <BomList title="COTS / 採購件，僅記錄" items={preview.cots} />
+            {(preview.unknown?.length ?? 0) > 0 && (
+              <BomList title="Needs review / unknown" items={preview.unknown} />
+            )}
           </div>
         </div>
       )}

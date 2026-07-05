@@ -114,7 +114,8 @@ export interface OnshapeBomItem {
   sourceElementId: string | null;
   sourcePartId: string | null;
   sourceConfig: string | null;
-  classification: 'made' | 'cots';
+  classification: 'made' | 'cots' | 'unknown';
+  classificationReason: string | null;
   cotsReason: string | null;
 }
 
@@ -125,10 +126,12 @@ export interface OnshapeImportPreview {
   thumbnailPath: string | null;
   made: OnshapeBomItem[];
   cots: OnshapeBomItem[];
+  unknown: OnshapeBomItem[];
   summary: {
     total: number;
     madeCount: number;
     cotsCount: number;
+    unknownCount: number;
     imageCount: number;
     imageFailedCount: number;
   };

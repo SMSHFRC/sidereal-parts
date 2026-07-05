@@ -41,7 +41,7 @@ function makeOnshapeUrl(ref: NonNullable<ReturnType<typeof readPanelRef>>) {
 
 function Summary({ preview }: { preview: OnshapeImportPreview }) {
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-4 gap-2">
       <div className="rounded-md bg-slate-100 px-2 py-2 text-center">
         <p className="text-lg font-bold text-slate-900">{preview.summary.madeCount}</p>
         <p className="text-[11px] text-slate-500">自製</p>
@@ -49,6 +49,10 @@ function Summary({ preview }: { preview: OnshapeImportPreview }) {
       <div className="rounded-md bg-slate-100 px-2 py-2 text-center">
         <p className="text-lg font-bold text-slate-900">{preview.summary.cotsCount}</p>
         <p className="text-[11px] text-slate-500">COTS</p>
+      </div>
+      <div className="rounded-md bg-amber-50 px-2 py-2 text-center">
+        <p className="text-lg font-bold text-amber-800">{preview.summary.unknownCount ?? preview.unknown?.length ?? 0}</p>
+        <p className="text-[11px] text-amber-700">Check</p>
       </div>
       <div className="rounded-md bg-slate-100 px-2 py-2 text-center">
         <p className="text-lg font-bold text-slate-900">{preview.summary.total}</p>
@@ -246,6 +250,23 @@ export default function OnshapePanel() {
               ))}
             </div>
           </div>
+          {(preview.unknown?.length ?? 0) > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50">
+              <div className="border-b border-amber-100 px-3 py-2 text-xs font-semibold text-amber-800">
+                Needs review
+              </div>
+              <div className="max-h-36 divide-y divide-amber-100 overflow-auto">
+                {preview.unknown.slice(0, 20).map((item, idx) => (
+                  <div key={`${item.sourcePartId ?? item.partNumber ?? idx}`} className="px-3 py-2">
+                    <p className="truncate text-xs font-medium text-amber-950">{item.name ?? 'Unnamed part'}</p>
+                    <p className="text-[11px] text-amber-800">
+                      {item.partNumber ?? 'No part number'} · {item.classificationReason ?? 'unknown'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
