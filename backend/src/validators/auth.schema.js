@@ -3,7 +3,7 @@ import { z } from 'zod';
 const username = z
   .string()
   .trim()
-  .min(3, '帳號至少 3 字元')
+  .min(2, '帳號至少 2 字元')
   .max(50)
   .regex(/^[a-zA-Z0-9_.-]+$/, '帳號僅能含英數與 _ . -');
 
