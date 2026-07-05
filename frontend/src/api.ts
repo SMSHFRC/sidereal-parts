@@ -450,19 +450,31 @@ export const FALLBACK_SYSTEM_OPTIONS = [
   { id: 3, label: 'PWR — 電源模組' },
 ];
 export const FALLBACK_METHOD_OPTIONS = [
-  { id: 1, label: 'CNC 銑削' },
+  { id: 1, label: 'CNC — CNC Router' },
   { id: 2, label: '車床' },
   { id: 3, label: '3D 列印' },
+  { id: 4, label: 'MANUAL_MILL — 手動銑床' },
+  { id: 5, label: 'LASER — 雷切機' },
+  { id: 6, label: 'CUTOFF — 切斷機' },
 ];
 export const FALLBACK_MATERIAL_OPTIONS = [
-  { id: 1, label: '鋁 6061' },
-  { id: 2, label: '不鏽鋼 304' },
   { id: 3, label: 'PLA' },
+  { id: 4, label: 'ABS' },
+  { id: 5, label: 'PACF — PA-CF' },
+  { id: 6, label: 'MDF_3MM — 密集板 3mm' },
+  { id: 7, label: 'MDF_6MM — 密集板 6mm' },
+  { id: 8, label: 'SRPP_6MM — SRPP 6mm' },
+  { id: 9, label: 'PC_3MM — PC 3mm' },
+  { id: 10, label: 'PC_6MM — PC 6mm' },
+  { id: 11, label: 'AL6061_PLATE_3MM — 6061 鋁板 3mm' },
+  { id: 12, label: 'AL6061_PLATE_5MM — 6061 鋁板 5mm' },
+  { id: 13, label: 'HEX_SHAFT_0_5IN — 六角軸 1/2in' },
+  { id: 14, label: 'ROUND_SHAFT_10MM — 圓軸 10mm' },
+  { id: 15, label: 'ROUND_SHAFT_15MM — 圓軸 15mm' },
 ];
 export const FALLBACK_POST_PROCESS_OPTIONS = [
-  { id: 1, label: '陽極處理' },
-  { id: 2, label: '噴砂' },
-  { id: 3, label: '拋光' },
+  { id: 4, label: 'TAP — 攻牙' },
+  { id: 5, label: 'CHAMFER — 倒角' },
 ];
 
 export function toSelectOptions(items: OptionRef[]) {
