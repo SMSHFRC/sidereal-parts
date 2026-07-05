@@ -8,16 +8,68 @@ import {
 import { ErrorBox, Spinner } from '../ui';
 
 const inputCls =
-  'min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-900';
+  'w-full min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-base outline-none focus:border-slate-900';
 
 const tabs: Array<{ type: MasterDataType; label: string; hint: string }> = [
-  { type: 'methods', label: '加工方式', hint: 'CNC Router、車床、雷切機、3D 列印等' },
-  { type: 'materials', label: '材料', hint: 'PLA、PA-CF、PC、6061 鋁板、軸材等' },
-  { type: 'postProcesses', label: '後處理', hint: '攻牙、倒角等' },
+  { type: 'methods', label: '加工方式', hint: 'CNC Router、車床、雷切機、3D 列印' },
+  { type: 'materials', label: '材料', hint: 'PLA、PA-CF、PC、6061 鋁板、軸材' },
+  { type: 'postProcesses', label: '後處理', hint: '攻牙、倒角' },
 ];
 
 function emptyDraft() {
   return { code: '', name: '', isActive: true };
+}
+
+function ItemEditor({
+  item,
+  draft,
+  saving,
+  onChange,
+  onSave,
+}: {
+  item: MasterDataItem;
+  draft: MasterDataItem;
+  saving: boolean;
+  onChange: (patch: Partial<MasterDataItem>) => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:grid md:grid-cols-[1fr_1.4fr_5rem_5rem] md:items-center md:gap-2 md:rounded-none md:border-0 md:border-b md:shadow-none">
+      <label className="block">
+        <span className="text-xs font-medium text-slate-500 md:hidden">Code</span>
+        <input
+          value={draft.code}
+          onChange={(event) => onChange({ code: event.target.value.toUpperCase() })}
+          className={`${inputCls} mt-1 font-mono md:mt-0 md:text-sm`}
+        />
+      </label>
+      <label className="mt-3 block md:mt-0">
+        <span className="text-xs font-medium text-slate-500 md:hidden">Name</span>
+        <input
+          value={draft.name}
+          onChange={(event) => onChange({ name: event.target.value })}
+          className={`${inputCls} mt-1 md:mt-0 md:text-sm`}
+        />
+      </label>
+      <label className="mt-3 flex min-h-11 items-center justify-between rounded-lg bg-slate-50 px-3 text-sm text-slate-700 md:mt-0 md:justify-center md:bg-transparent md:px-0">
+        <span className="md:hidden">啟用</span>
+        <input
+          type="checkbox"
+          checked={draft.isActive}
+          onChange={(event) => onChange({ isActive: event.target.checked })}
+          className="h-5 w-5"
+        />
+      </label>
+      <button
+        onClick={onSave}
+        disabled={saving}
+        className="mt-3 min-h-11 w-full rounded-lg bg-slate-900 text-sm font-semibold text-white disabled:opacity-50 md:mt-0"
+      >
+        {saving ? '儲存中' : '儲存'}
+      </button>
+      <input type="hidden" value={item.id} readOnly />
+    </div>
+  );
 }
 
 export default function MasterDataSettings() {
@@ -28,7 +80,7 @@ export default function MasterDataSettings() {
   const [busy, setBusy] = useState(false);
   const [savingId, setSavingId] = useState<number | 'new' | null>(null);
   const [error, setError] = useState('');
-  const activeTab = useMemo(() => tabs.find((t) => t.type === type)!, [type]);
+  const activeTab = useMemo(() => tabs.find((tab) => tab.type === type)!, [type]);
 
   const load = async (nextType = type) => {
     setBusy(true);
@@ -91,26 +143,26 @@ export default function MasterDataSettings() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div>
-        <h1 className="text-lg font-bold text-slate-900">主檔管理</h1>
-        <p className="mt-1 text-sm text-slate-500">
+      <section className="rounded-2xl bg-slate-50 p-3 md:p-0">
+        <h1 className="text-xl font-bold text-slate-950">主檔管理</h1>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
           新增或停用加工方式、材料、後處理。停用後不會出現在新任務選單，舊任務資料會保留。
         </p>
-      </div>
+      </section>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-3">
         {tabs.map((tab) => (
           <button
             key={tab.type}
             onClick={() => setType(tab.type)}
-            className={`min-h-12 rounded-lg border px-3 text-left text-sm ${
+            className={`min-h-16 rounded-xl border px-3 py-2 text-left ${
               type === tab.type
                 ? 'border-slate-900 bg-slate-900 text-white'
                 : 'border-slate-200 bg-white text-slate-700 active:bg-slate-50'
             }`}
           >
-            <span className="block font-semibold">{tab.label}</span>
-            <span className={`block text-xs ${type === tab.type ? 'text-slate-300' : 'text-slate-500'}`}>
+            <span className="block text-sm font-bold">{tab.label}</span>
+            <span className={`mt-0.5 block text-xs leading-5 ${type === tab.type ? 'text-slate-300' : 'text-slate-500'}`}>
               {tab.hint}
             </span>
           </button>
@@ -121,64 +173,54 @@ export default function MasterDataSettings() {
       {busy ? (
         <Spinner label="讀取主檔中..." />
       ) : (
-        <section className="mt-4 rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="grid grid-cols-[1fr_1.4fr_5rem_5rem] gap-2 border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">
+        <section className="mt-4 space-y-3 md:space-y-0 md:overflow-hidden md:rounded-xl md:border md:border-slate-200 md:bg-white md:shadow-sm">
+          <div className="hidden grid-cols-[1fr_1.4fr_5rem_5rem] gap-2 border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-500 md:grid">
             <span>Code</span>
             <span>Name</span>
             <span>啟用</span>
             <span></span>
           </div>
-          <div className="divide-y divide-slate-100">
-            {items.map((item) => {
-              const draft = drafts[item.id] ?? item;
-              return (
-                <div key={item.id} className="grid grid-cols-[1fr_1.4fr_5rem_5rem] gap-2 px-3 py-2">
-                  <input
-                    value={draft.code}
-                    onChange={(event) => updateDraft(item.id, { code: event.target.value.toUpperCase() })}
-                    className={inputCls}
-                  />
-                  <input
-                    value={draft.name}
-                    onChange={(event) => updateDraft(item.id, { name: event.target.value })}
-                    className={inputCls}
-                  />
-                  <label className="flex items-center justify-center">
-                    <input
-                      type="checkbox"
-                      checked={draft.isActive}
-                      onChange={(event) => updateDraft(item.id, { isActive: event.target.checked })}
-                      className="h-5 w-5"
-                    />
-                  </label>
-                  <button
-                    onClick={() => save(item.id)}
-                    disabled={savingId !== null}
-                    className="min-h-10 rounded-lg bg-slate-900 text-sm font-semibold text-white disabled:opacity-50"
-                  >
-                    {savingId === item.id ? '...' : '儲存'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
 
-          <form onSubmit={create} className="grid grid-cols-[1fr_1.4fr_5rem_5rem] gap-2 border-t border-slate-200 bg-slate-50 px-3 py-3">
-            <input
-              required
-              value={newItem.code}
-              onChange={(event) => setNewItem((item) => ({ ...item, code: event.target.value.toUpperCase() }))}
-              placeholder="NEW_CODE"
-              className={inputCls}
-            />
-            <input
-              required
-              value={newItem.name}
-              onChange={(event) => setNewItem((item) => ({ ...item, name: event.target.value }))}
-              placeholder={`新增${activeTab.label}`}
-              className={inputCls}
-            />
-            <label className="flex items-center justify-center">
+          {items.map((item) => {
+            const draft = drafts[item.id] ?? item;
+            return (
+              <ItemEditor
+                key={item.id}
+                item={item}
+                draft={draft}
+                saving={savingId === item.id}
+                onChange={(patch) => updateDraft(item.id, patch)}
+                onSave={() => save(item.id)}
+              />
+            );
+          })}
+
+          <form
+            onSubmit={create}
+            className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 md:grid md:grid-cols-[1fr_1.4fr_5rem_5rem] md:items-center md:gap-2 md:rounded-none md:border-0 md:border-t md:border-slate-200 md:bg-slate-50"
+          >
+            <label className="block">
+              <span className="text-xs font-medium text-slate-500 md:hidden">New code</span>
+              <input
+                required
+                value={newItem.code}
+                onChange={(event) => setNewItem((item) => ({ ...item, code: event.target.value.toUpperCase() }))}
+                placeholder="NEW_CODE"
+                className={`${inputCls} mt-1 font-mono md:mt-0 md:text-sm`}
+              />
+            </label>
+            <label className="mt-3 block md:mt-0">
+              <span className="text-xs font-medium text-slate-500 md:hidden">New name</span>
+              <input
+                required
+                value={newItem.name}
+                onChange={(event) => setNewItem((item) => ({ ...item, name: event.target.value }))}
+                placeholder={`新增${activeTab.label}`}
+                className={`${inputCls} mt-1 md:mt-0 md:text-sm`}
+              />
+            </label>
+            <label className="mt-3 flex min-h-11 items-center justify-between rounded-lg bg-white px-3 text-sm text-slate-700 md:mt-0 md:justify-center md:bg-transparent md:px-0">
+              <span className="md:hidden">啟用</span>
               <input
                 type="checkbox"
                 checked={newItem.isActive}
@@ -188,9 +230,9 @@ export default function MasterDataSettings() {
             </label>
             <button
               disabled={savingId !== null}
-              className="min-h-10 rounded-lg bg-emerald-600 text-sm font-semibold text-white disabled:opacity-50"
+              className="mt-3 min-h-11 w-full rounded-lg bg-emerald-600 text-sm font-semibold text-white disabled:opacity-50 md:mt-0"
             >
-              {savingId === 'new' ? '...' : '新增'}
+              {savingId === 'new' ? '新增中' : '新增'}
             </button>
           </form>
         </section>

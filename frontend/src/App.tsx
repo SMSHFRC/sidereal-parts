@@ -44,7 +44,7 @@ function WakeGate({ children }: { children: ReactNode }) {
       ) : (
         <>
           <h1 className="text-lg font-semibold text-white">伺服器暫時無法連線</h1>
-          <p className="max-w-xs text-sm text-slate-400">請稍後再試，或確認後端服務是否正在部署。</p>
+          <p className="max-w-xs text-sm text-slate-400">請稍後再試，或確認後端是否正在部署。</p>
           <button
             onClick={probe}
             className="min-h-11 rounded-xl bg-white px-8 text-sm font-semibold text-slate-900 active:bg-slate-200"
@@ -74,60 +74,65 @@ function RequireAdmin({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function NavLink({ to, children, primary = false }: { to: string; children: ReactNode; primary?: boolean }) {
+  return (
+    <Link
+      to={to}
+      className={`flex min-h-10 shrink-0 items-center justify-center rounded-lg px-3 text-sm font-semibold ${
+        primary
+          ? 'bg-slate-900 text-white active:bg-slate-700'
+          : 'border border-slate-300 bg-white text-slate-700 active:bg-slate-100'
+      }`}
+    >
+      {children}
+    </Link>
+  );
+}
+
 function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   return (
     <div className="mx-auto min-h-dvh max-w-5xl pb-8">
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
-        <Link to="/" className="flex items-center gap-2 text-base font-bold text-slate-900">
-          <img src="/logo.png" alt="FRC 9501" className="h-8 w-8 rounded-lg" />
-          零件任務
-        </Link>
-        {user && (
-          <>
-            <Link
-              to="/tasks/new"
-              className="flex min-h-9 items-center rounded-lg bg-slate-900 px-3 text-sm font-medium text-white active:bg-slate-700"
-            >
-              新增
-            </Link>
-            <Link
-              to="/import"
-              className="flex min-h-9 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 active:bg-slate-100"
-            >
-              匯入
-            </Link>
-            {user.role === 'admin' && (
-              <Link
-                to="/settings/master-data"
-                className="flex min-h-9 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 active:bg-slate-100"
-              >
-                主檔
-              </Link>
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-4">
+        <div className="flex items-center gap-2">
+          <Link to="/" className="flex min-w-0 items-center gap-2 text-base font-bold text-slate-900">
+            <img src="/logo.png" alt="FRC 9501" className="h-8 w-8 shrink-0 rounded-lg" />
+            <span className="leading-tight">零件任務</span>
+          </Link>
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 text-xs text-slate-600">
+            {user && (
+              <>
+                <span className="hidden max-w-40 truncate sm:inline">
+                  {user.username} ({ROLE_LABEL[user.role]})
+                </span>
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
+                  {user.totalPoints} 分
+                </span>
+                <button
+                  onClick={logout}
+                  className="min-h-9 shrink-0 rounded-lg border border-slate-300 px-3 text-slate-700 active:bg-slate-100"
+                >
+                  登出
+                </button>
+              </>
             )}
-          </>
-        )}
-        <div className="ml-auto flex items-center gap-2 text-xs text-slate-600">
-          {user && (
-            <>
-              <OnshapeConnectButton />
-              <span className="hidden sm:inline">
-                {user.username} ({ROLE_LABEL[user.role]})
-              </span>
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
-                {user.totalPoints} 分
-              </span>
-              <button
-                onClick={logout}
-                className="min-h-9 rounded-lg border border-slate-300 px-3 text-slate-700 active:bg-slate-100"
-              >
-                登出
-              </button>
-            </>
-          )}
+          </div>
         </div>
+
+        {user && (
+          <nav className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <NavLink to="/tasks/new" primary>
+              新增
+            </NavLink>
+            <NavLink to="/import">匯入</NavLink>
+            {user.role === 'admin' && <NavLink to="/settings/master-data">主檔</NavLink>}
+            <div className="shrink-0">
+              <OnshapeConnectButton />
+            </div>
+          </nav>
+        )}
       </header>
-      <main className="px-4 pt-4">{children}</main>
+      <main className="px-3 pt-4 sm:px-4">{children}</main>
     </div>
   );
 }
