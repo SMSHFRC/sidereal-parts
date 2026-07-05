@@ -10,8 +10,8 @@ import TaskDetail from './pages/TaskDetail';
 import NewTask from './pages/NewTask';
 import ImportOnshape from './pages/ImportOnshape';
 import OnshapePanel from './pages/OnshapePanel';
+import MasterDataSettings from './pages/MasterDataSettings';
 
-// ---- 喚醒畫面：Render free tier 冷啟動約 30–60 秒 ----
 function WakeGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'checking' | 'ok' | 'down'>('checking');
 
@@ -38,20 +38,18 @@ function WakeGate({ children }: { children: ReactNode }) {
       {state === 'checking' ? (
         <>
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-600 border-t-white" />
-          <h1 className="text-lg font-semibold text-white">伺服器喚醒中…</h1>
-          <p className="max-w-xs text-sm text-slate-400">
-            免費方案閒置後需要冷啟動，最多約 60 秒，請稍候。
-          </p>
+          <h1 className="text-lg font-semibold text-white">後端啟動中</h1>
+          <p className="max-w-xs text-sm text-slate-400">Render 免費方案可能需要約 60 秒喚醒。</p>
         </>
       ) : (
         <>
-          <h1 className="text-lg font-semibold text-white">無法連線到伺服器</h1>
-          <p className="max-w-xs text-sm text-slate-400">請確認網路連線後重試。</p>
+          <h1 className="text-lg font-semibold text-white">伺服器暫時無法連線</h1>
+          <p className="max-w-xs text-sm text-slate-400">請稍後再試，或確認後端服務是否正在部署。</p>
           <button
             onClick={probe}
             className="min-h-11 rounded-xl bg-white px-8 text-sm font-semibold text-slate-900 active:bg-slate-200"
           >
-            重試
+            重新檢查
           </button>
         </>
       )}
@@ -62,14 +60,22 @@ function WakeGate({ children }: { children: ReactNode }) {
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, booting } = useAuth();
   const loc = useLocation();
-  if (booting) return <Spinner label="驗證登入中…" />;
+  if (booting) return <Spinner label="登入檢查中..." />;
   if (!user) return <Navigate to="/login" state={{ from: `${loc.pathname}${loc.search}` }} replace />;
+  return <>{children}</>;
+}
+
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const { user, booting } = useAuth();
+  const loc = useLocation();
+  if (booting) return <Spinner label="權限檢查中..." />;
+  if (!user) return <Navigate to="/login" state={{ from: `${loc.pathname}${loc.search}` }} replace />;
+  if (user.role !== 'admin') return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
 function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
-  const canCreate = Boolean(user);
   return (
     <div className="mx-auto min-h-dvh max-w-5xl pb-8">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
@@ -77,13 +83,13 @@ function Layout({ children }: { children: ReactNode }) {
           <img src="/logo.png" alt="FRC 9501" className="h-8 w-8 rounded-lg" />
           零件任務
         </Link>
-        {canCreate && (
+        {user && (
           <>
             <Link
               to="/tasks/new"
               className="flex min-h-9 items-center rounded-lg bg-slate-900 px-3 text-sm font-medium text-white active:bg-slate-700"
             >
-              ＋ 新增
+              新增
             </Link>
             <Link
               to="/import"
@@ -91,6 +97,14 @@ function Layout({ children }: { children: ReactNode }) {
             >
               匯入
             </Link>
+            {user.role === 'admin' && (
+              <Link
+                to="/settings/master-data"
+                className="flex min-h-9 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 active:bg-slate-100"
+              >
+                主檔
+              </Link>
+            )}
           </>
         )}
         <div className="ml-auto flex items-center gap-2 text-xs text-slate-600">
@@ -98,7 +112,7 @@ function Layout({ children }: { children: ReactNode }) {
             <>
               <OnshapeConnectButton />
               <span className="hidden sm:inline">
-                {user.username}（{ROLE_LABEL[user.role]}）
+                {user.username} ({ROLE_LABEL[user.role]})
               </span>
               <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
                 {user.totalPoints} 分
@@ -151,6 +165,16 @@ export default function App() {
                 <ImportOnshape />
               </Layout>
             </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/master-data"
+          element={
+            <RequireAdmin>
+              <Layout>
+                <MasterDataSettings />
+              </Layout>
+            </RequireAdmin>
           }
         />
         <Route

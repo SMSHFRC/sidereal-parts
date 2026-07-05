@@ -30,6 +30,10 @@ export interface UserRef {
 export interface OptionRef extends Ref {
   id: number;
 }
+export interface MasterDataItem extends OptionRef {
+  isActive: boolean;
+}
+export type MasterDataType = 'methods' | 'materials' | 'postProcesses';
 
 export interface MetaOptions {
   systems: OptionRef[];
@@ -328,6 +332,21 @@ export const taskApi = {
 
 export const metaApi = {
   options: () => api<MetaOptions>('/meta/options'),
+  listMaster: (type: MasterDataType) => api<MasterDataItem[]>(`/meta/admin/${type}`),
+  createMaster: (type: MasterDataType, input: { code: string; name: string; isActive?: boolean }) =>
+    api<MasterDataItem>(`/meta/admin/${type}`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateMaster: (
+    type: MasterDataType,
+    id: number,
+    input: { code?: string; name?: string; isActive?: boolean },
+  ) =>
+    api<MasterDataItem>(`/meta/admin/${type}/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
 };
 
 export const onshapeApi = {
