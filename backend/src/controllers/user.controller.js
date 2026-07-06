@@ -13,6 +13,11 @@ export const userController = {
     res.json({ success: true, data: serialize(result) });
   }),
 
+  leaderboard: asyncHandler(async (_req, res) => {
+    const result = await userService.leaderboard();
+    res.json({ success: true, data: serialize(result) });
+  }),
+
   list: asyncHandler(async (req, res) => {
     const result = await userService.list(req.validatedQuery);
     res.json({ success: true, data: serialize(result) });

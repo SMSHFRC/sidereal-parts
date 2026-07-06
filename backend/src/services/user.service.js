@@ -26,6 +26,16 @@ export const userService = {
     return this.listMembers();
   },
 
+  async leaderboard() {
+    const users = await prisma.user.findMany({
+      where: { isActive: true, role: { name: ROLES.MEMBER } },
+      select: { id: true, username: true, totalPoints: true },
+      orderBy: [{ totalPoints: 'desc' }, { id: 'asc' }],
+      take: 100,
+    });
+    return users.map((user, index) => ({ ...user, rank: index + 1 }));
+  },
+
   async list({ page, limit }) {
     const [items, total] = await Promise.all([
       prisma.user.findMany({

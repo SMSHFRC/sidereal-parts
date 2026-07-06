@@ -316,6 +316,15 @@ test('積分轉讓：member B 轉 30 給 member C', async () => {
   assert.equal(me2.body.data.totalPoints, '30');
 });
 
+test('加工者積分排行榜依積分排序，member 可讀取', async () => {
+  const res = await api.get('/api/v1/users/leaderboard').set(auth(ctx.memberAToken));
+  assert.equal(res.status, 200);
+  assert.ok(res.body.data.length >= 3);
+  const points = res.body.data.map((u) => Number(u.totalPoints));
+  assert.deepEqual(points, [...points].sort((a, b) => b - a));
+  assert.equal(res.body.data[0].rank, 1);
+});
+
 test('餘額不足轉讓被擋（400 INSUFFICIENT_POINTS）', async () => {
   const res = await api
     .post('/api/v1/points/transfer')

@@ -32,6 +32,11 @@ export interface UserRef {
   username: string;
 }
 
+export interface LeaderboardUser extends UserRef {
+  rank: number;
+  totalPoints: string;
+}
+
 export interface OptionRef extends Ref {
   id: number;
 }
@@ -371,6 +376,7 @@ export const authApi = {
 export const usersApi = {
   members: () => api<UserRef[]>('/users/members'),
   processors: () => api<UserRef[]>('/users/processors'),
+  leaderboard: () => api<LeaderboardUser[]>('/users/leaderboard'),
 };
 
 export const taskApi = {

@@ -13,6 +13,7 @@ import OnshapePanel from './pages/OnshapePanel';
 import MasterDataSettings from './pages/MasterDataSettings';
 import Robots from './pages/Robots';
 import SubsystemDetail from './pages/SubsystemDetail';
+import Leaderboard from './pages/Leaderboard';
 
 function WakeGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'checking' | 'ok' | 'down'>('checking');
@@ -128,6 +129,7 @@ function Layout({ children }: { children: ReactNode }) {
             </NavLink>
             <NavLink to="/import">匯入</NavLink>
             <NavLink to="/robots">機器人</NavLink>
+            <NavLink to="/leaderboard">排行榜</NavLink>
             {user.role === 'admin' && <NavLink to="/settings/master-data">主檔</NavLink>}
             <div className="shrink-0">
               <OnshapeConnectButton />
@@ -201,6 +203,16 @@ export default function App() {
             <RequireAuth>
               <Layout>
                 <SubsystemDetail />
+              </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/leaderboard"
+          element={
+            <RequireAuth>
+              <Layout>
+                <Leaderboard />
               </Layout>
             </RequireAuth>
           }
