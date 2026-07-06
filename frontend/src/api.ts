@@ -58,6 +58,8 @@ export interface Task {
   partNumberSeq: string;
   manufacturingMethodId: number;
   systemId: number;
+  robotId: string | null;
+  subsystemId: string | null;
   materialId: number | null;
   postProcessId: number | null;
   creatorId: string;
@@ -73,6 +75,8 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   system: Ref;
+  robot: RobotRef | null;
+  subsystem: SubsystemRef | null;
   manufacturingMethod: MethodRef;
   material: Ref | null;
   postProcess: Ref | null;
@@ -90,6 +94,37 @@ export interface Task {
   onshapeThumbnailUrl: string | null;
   onshapeImageMeta: unknown | null;
   importBatchId: string | null;
+}
+
+export interface RobotRef {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface SubsystemRef {
+  id: string;
+  robotId: string;
+  code: string;
+  name: string;
+}
+
+export interface Robot extends RobotRef {
+  note: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  subsystems: RobotSubsystem[];
+  _count?: { tasks: number };
+}
+
+export interface RobotSubsystem extends SubsystemRef {
+  note: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  robot?: RobotRef;
+  _count?: { tasks: number };
 }
 
 // ---------- M3: Onshape ----------
@@ -197,6 +232,8 @@ export interface Paged<T> {
 
 export interface CreateTaskInput {
   systemId: number;
+  robotId?: string;
+  subsystemId?: string;
   manufacturingMethodId: number;
   quantity: number;
   materialId?: number;
@@ -351,6 +388,20 @@ export const taskApi = {
     api<Task>(`/tasks/${id}/claim-post-process`, { method: 'POST' }),
 };
 
+export const robotApi = {
+  list: () => api<Robot[]>('/robots'),
+  get: (id: string) => api<Robot>(`/robots/${id}`),
+  create: (input: { code: string; name: string; note?: string }) =>
+    api<Robot>('/robots', { method: 'POST', body: JSON.stringify(input) }),
+  createSubsystem: (robotId: string, input: { code: string; name: string; note?: string }) =>
+    api<RobotSubsystem>(`/robots/${robotId}/subsystems`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getSubsystem: (id: string) => api<RobotSubsystem>(`/robots/subsystems/${id}`),
+  subsystemTasks: (id: string) => api<Paged<Task>>(`/robots/subsystems/${id}/tasks?limit=100`),
+};
+
 export const metaApi = {
   options: () => api<MetaOptions>('/meta/options'),
   listMaster: (type: MasterDataType) => api<MasterDataItem[]>(`/meta/admin/${type}`),
@@ -386,6 +437,8 @@ export const onshapeApi = {
   importBom: (input: {
     url: string;
     systemId: number;
+    robotId?: string;
+    subsystemId?: string;
     manufacturingMethodId?: number; // 全域預設（逐件未指定時採用）
     materialId?: number;
     postProcessId?: number;

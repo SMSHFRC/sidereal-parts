@@ -34,6 +34,8 @@ const importItem = z.object({
 const importBody = z.object({
   url: z.string().trim().max(2048).url('必須是合法 URL'),
   systemId: z.coerce.number().int().positive(),
+  robotId: z.coerce.bigint().optional(),
+  subsystemId: z.coerce.bigint().optional(),
   // 全域「預設值」；逐件未指定時採用（皆選填）
   manufacturingMethodId: z.coerce.number().int().positive().optional(),
   materialId: z.coerce.number().int().positive().optional(),

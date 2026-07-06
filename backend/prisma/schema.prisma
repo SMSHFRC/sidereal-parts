@@ -134,6 +134,39 @@ model System {
   @@map("systems")
 }
 
+model Robot {
+  id        BigInt   @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  note      String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subsystems RobotSubsystem[]
+  tasks      Task[]
+
+  @@map("robots")
+}
+
+model RobotSubsystem {
+  id        BigInt   @id @default(autoincrement())
+  robotId   BigInt   @map("robot_id")
+  code      String
+  name      String
+  note      String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  robot Robot @relation(fields: [robotId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@unique([robotId, code])
+  @@index([robotId])
+  @@map("robot_subsystems")
+}
+
 model ManufacturingMethod {
   id             Int     @id @default(autoincrement())
   code           String  @unique
@@ -182,6 +215,8 @@ model Task {
 
   manufacturingMethodId Int        @map("manufacturing_method_id")
   systemId              Int        @map("system_id")
+  robotId               BigInt?    @map("robot_id")
+  subsystemId           BigInt?    @map("subsystem_id")
   materialId            Int?       @map("material_id")
   postProcessId         Int?       @map("post_process_id")
 
@@ -213,6 +248,8 @@ model Task {
 
   manufacturingMethod ManufacturingMethod @relation(fields: [manufacturingMethodId], references: [id])
   system              System              @relation(fields: [systemId], references: [id])
+  robot               Robot?              @relation(fields: [robotId], references: [id])
+  subsystem           RobotSubsystem?     @relation(fields: [subsystemId], references: [id])
   material            Material?           @relation(fields: [materialId], references: [id])
   postProcess         PostProcess?        @relation(fields: [postProcessId], references: [id])
   creator             User                @relation("Creator", fields: [creatorId], references: [id])
@@ -228,6 +265,8 @@ model Task {
   @@index([creatorId])
   @@index([status])
   @@index([systemId])
+  @@index([robotId])
+  @@index([subsystemId])
   @@index([importBatchId])
   @@index([onshapeDid, onshapeEid, onshapePartId])
   @@map("tasks")

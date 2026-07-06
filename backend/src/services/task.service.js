@@ -30,6 +30,8 @@ const taskInclude = {
   },
   material: { select: { code: true, name: true } },
   postProcess: { select: { code: true, name: true } },
+  robot: { select: { id: true, code: true, name: true } },
+  subsystem: { select: { id: true, code: true, name: true, robotId: true } },
   creator: { select: { id: true, username: true } },
   assignee: { select: { id: true, username: true } },
   postProcessor: { select: { id: true, username: true } },
@@ -67,6 +69,26 @@ async function awardPoints(tx, userId, taskId, points, reason) {
   await tx.user.update({ where: { id: userId }, data: { totalPoints: { increment: points } } });
 }
 
+async function resolveRobotScope(tx, { robotId, subsystemId }) {
+  if (subsystemId === undefined && robotId === undefined) return {};
+  if (subsystemId === null) return { robotId: robotId ?? null, subsystemId: null };
+  if (subsystemId != null) {
+    const subsystem = await tx.robotSubsystem.findUnique({
+      where: { id: subsystemId },
+      select: { id: true, robotId: true, isActive: true },
+    });
+    if (!subsystem || !subsystem.isActive) throw ApiError.badRequest('子系統不存在或已停用');
+    if (robotId != null && subsystem.robotId !== robotId) {
+      throw ApiError.badRequest('子系統不屬於指定機器人');
+    }
+    return { robotId: subsystem.robotId, subsystemId: subsystem.id };
+  }
+  if (robotId === null) return { robotId: null, subsystemId: null };
+  const robot = await tx.robot.findUnique({ where: { id: robotId }, select: { id: true, isActive: true } });
+  if (!robot || !robot.isActive) throw ApiError.badRequest('機器人不存在或已停用');
+  return { robotId: robot.id, subsystemId: null };
+}
+
 export const taskService = {
   async create(data, actor) {
     // 接單制：任務預設進任務池，僅 admin 可預先指派
@@ -82,9 +104,10 @@ export const taskService = {
       throw ApiError.badRequest('未選擇後處理方式，不需指派後處理者');
     }
 
-    const [system, method] = await Promise.all([
+    const [system, method, robotScope] = await Promise.all([
       prisma.system.findUnique({ where: { id: data.systemId } }),
       prisma.manufacturingMethod.findUnique({ where: { id: data.manufacturingMethodId } }),
+      resolveRobotScope(prisma, { robotId: data.robotId, subsystemId: data.subsystemId }),
     ]);
     if (!system) throw ApiError.badRequest('系統不存在');
     if (!method) throw ApiError.badRequest('加工方式不存在');
@@ -100,6 +123,7 @@ export const taskService = {
           partNumberPrefix: system.code,
           partNumberSeq: seq,
           systemId: data.systemId,
+          ...robotScope,
           manufacturingMethodId: data.manufacturingMethodId,
           materialId: data.materialId ?? null,
           postProcessId: data.postProcessId ?? null,
@@ -132,11 +156,16 @@ export const taskService = {
   },
 
   async list(query, actor) {
-    const { page, limit, status, systemId, assigneeId, mine } = query;
+    const { page, limit, status, systemId, robotId, subsystemId, assigneeId, mine, includeSubsystemCompleted } = query;
     const where = {};
     if (status) where.status = status;
     if (systemId) where.systemId = systemId;
+    if (robotId) where.robotId = robotId;
+    if (subsystemId) where.subsystemId = subsystemId;
     if (assigneeId) where.assigneeId = assigneeId;
+    if (!subsystemId && !includeSubsystemCompleted) {
+      where.NOT = { status: TASK_STATUS.COMPLETED, subsystemId: { not: null } };
+    }
 
     // M1：小隊透明，所有 member 可見全部任務；mine 僅作為視角篩選。
     if (mine) {
@@ -199,10 +228,17 @@ export const taskService = {
 
     // drawingUrl 有變動時，重新解析 Onshape 參照
     const osPatch = data.drawingUrl !== undefined ? onshapeFields(data.drawingUrl) : {};
+    const robotScope =
+      data.robotId !== undefined || data.subsystemId !== undefined
+        ? await resolveRobotScope(prisma, {
+            robotId: data.robotId !== undefined ? data.robotId : task.robotId,
+            subsystemId: data.subsystemId !== undefined ? data.subsystemId : task.subsystemId,
+          })
+        : {};
 
     return withTaskFlags(await prisma.task.update({
       where: { id },
-      data: { ...data, ...osPatch, rewardPoints },
+      data: { ...data, ...robotScope, ...osPatch, rewardPoints },
       include: taskInclude,
     }));
   },

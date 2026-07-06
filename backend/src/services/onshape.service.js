@@ -372,10 +372,29 @@ export const onshapeService = {
     return makeImportPreview(userId, url);
   },
 
-  async importBom(userId, { url, systemId, manufacturingMethodId, materialId, postProcessId, items }) {
+  async importBom(userId, { url, systemId, robotId, subsystemId, manufacturingMethodId, materialId, postProcessId, items }) {
     const preview = await makeImportPreview(userId, url);
     const system = await prisma.system.findUnique({ where: { id: systemId } });
     if (!system) throw ApiError.badRequest('系統不存在');
+    let robotScope = {};
+    if (subsystemId != null) {
+      const subsystem = await prisma.robotSubsystem.findUnique({
+        where: { id: subsystemId },
+        select: { id: true, robotId: true, isActive: true },
+      });
+      if (!subsystem || !subsystem.isActive) throw ApiError.badRequest('子系統不存在或已停用');
+      if (robotId != null && subsystem.robotId !== robotId) {
+        throw ApiError.badRequest('子系統不屬於指定機器人');
+      }
+      robotScope = { robotId: subsystem.robotId, subsystemId: subsystem.id };
+    } else if (robotId != null) {
+      const robot = await prisma.robot.findUnique({
+        where: { id: robotId },
+        select: { id: true, isActive: true },
+      });
+      if (!robot || !robot.isActive) throw ApiError.badRequest('機器人不存在或已停用');
+      robotScope = { robotId: robot.id };
+    }
 
     // 逐件覆寫表（key = rowKey）；全域欄位作為未指定時的預設值
     const overrides = new Map((items ?? []).map((it) => [it.rowKey, it]));
@@ -474,6 +493,7 @@ export const onshapeService = {
         const taskData = {
           manufacturingMethodId: plan.methodId,
           systemId,
+          ...robotScope,
           materialId: resolvedMaterialId,
           postProcessId: plan.itemPostProcessId ?? null,
           quantity,
@@ -506,6 +526,8 @@ export const onshapeService = {
               quantity: taskData.quantity,
               rewardPoints: taskData.rewardPoints,
               materialId: taskData.materialId,
+              robotId: taskData.robotId,
+              subsystemId: taskData.subsystemId,
               postProcessId: taskData.postProcessId,
               drawingUrl: taskData.drawingUrl,
               onshapeWvm: taskData.onshapeWvm,

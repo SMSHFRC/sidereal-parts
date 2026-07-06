@@ -5,6 +5,7 @@ import taskRoutes from './task.routes.js';
 import pointsRoutes from './points.routes.js';
 import metaRoutes from './meta.routes.js';
 import onshapeRoutes from './onshape.routes.js';
+import robotRoutes from './robot.routes.js';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/tasks', taskRoutes);
 router.use('/points', pointsRoutes);
 router.use('/meta', metaRoutes);
 router.use('/onshape', onshapeRoutes);
+router.use('/robots', robotRoutes);
 
 export default router;

@@ -65,6 +65,57 @@ test('主檔列表端點回傳四組 options', async () => {
   assert.ok(res.body.data.postProcesses.length >= 1);
 });
 
+test('機器人子系統任務完成後只留在子系統清單', async () => {
+  const worker = await api
+    .post('/api/v1/auth/register')
+    .send({ username: `robot_worker_${S}`, password: pw, role: 'member' });
+  assert.equal(worker.status, 201);
+  const workerToken = worker.body.data.accessToken;
+
+  const robot = await api
+    .post('/api/v1/robots')
+    .set(auth(ctx.adminToken))
+    .send({ code: `BOT_${S}`, name: 'Test Robot' });
+  assert.equal(robot.status, 201);
+  const subsystem = await api
+    .post(`/api/v1/robots/${robot.body.data.id}/subsystems`)
+    .set(auth(ctx.adminToken))
+    .send({ code: 'ARM', name: 'Arm' });
+  assert.equal(subsystem.status, 201);
+
+  const created = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({
+      systemId: 1,
+      robotId: robot.body.data.id,
+      subsystemId: subsystem.body.data.id,
+      manufacturingMethodId: ctx.methodId['3DP'],
+      quantity: 1,
+    });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.data.subsystem.id, subsystem.body.data.id);
+
+  const taskId = created.body.data.id;
+  await api.post(`/api/v1/tasks/${taskId}/claim`).set(auth(workerToken));
+  await api.patch(`/api/v1/tasks/${taskId}/status`).set(auth(workerToken)).send({ status: 'processing' });
+  const completed = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(workerToken))
+    .send({ status: 'completed' });
+  assert.equal(completed.status, 200);
+
+  const global = await api.get('/api/v1/tasks?limit=100').set(auth(ctx.memberAToken));
+  assert.equal(global.status, 200);
+  assert.equal(global.body.data.items.some((t) => t.id === taskId), false);
+
+  const scoped = await api
+    .get(`/api/v1/robots/subsystems/${subsystem.body.data.id}/tasks?limit=100`)
+    .set(auth(ctx.memberAToken));
+  assert.equal(scoped.status, 200);
+  assert.equal(scoped.body.data.items.some((t) => t.id === taskId && t.status === 'completed'), true);
+});
+
 test('member 不可預先指派人員（接單制，403）', async () => {
   const res = await api
     .post('/api/v1/tasks')

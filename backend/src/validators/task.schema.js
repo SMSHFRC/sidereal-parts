@@ -13,6 +13,8 @@ const httpUrl = z
 export const createTaskSchema = {
   body: z.object({
     systemId: z.coerce.number().int().positive(),
+    robotId: z.coerce.bigint().optional(),
+    subsystemId: z.coerce.bigint().optional(),
     manufacturingMethodId: z.coerce.number().int().positive(),
     materialId: z.coerce.number().int().positive().optional(),
     postProcessId: z.coerce.number().int().positive().optional(),
@@ -33,6 +35,8 @@ export const updateTaskSchema = {
       materialId: z.coerce.number().int().positive().nullable().optional(),
       postProcessId: z.coerce.number().int().positive().nullable().optional(),
       systemId: z.coerce.number().int().positive().optional(),
+      robotId: z.coerce.bigint().nullable().optional(),
+      subsystemId: z.coerce.bigint().nullable().optional(),
       assigneeId: z.coerce.bigint().nullable().optional(),
       postProcessorId: z.coerce.bigint().nullable().optional(),
       quantity: z.coerce.number().int().positive().max(1_000_000).optional(),
@@ -79,6 +83,9 @@ export const listTasksSchema = {
       ])
       .optional(),
     systemId: z.coerce.number().int().positive().optional(),
+    robotId: z.coerce.bigint().optional(),
+    subsystemId: z.coerce.bigint().optional(),
+    includeSubsystemCompleted: z.coerce.boolean().optional(),
     assigneeId: z.coerce.bigint().optional(),
     mine: z.coerce.boolean().optional(), // 只看與我相關的任務
   }),

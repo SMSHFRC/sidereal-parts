@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   ApiError,
   FALLBACK_MATERIAL_OPTIONS,
@@ -10,12 +10,14 @@ import {
   fetchOnshapeThumbnail,
   metaApi,
   onshapeApi,
+  robotApi,
   toSelectOptions,
   type OnshapeBomItem,
   type OnshapeImportItem,
   type OnshapeImportPreview,
   type OnshapeRef,
   type OnshapeImportResult,
+  type RobotSubsystem,
 } from '../api';
 import { ErrorBox, Spinner } from '../ui';
 
@@ -93,6 +95,9 @@ type Cls = 'made' | 'cots' | 'skip';
 type Edit = { classification: Cls; methodId: string; materialId: string; postProcessId: string; quantity: string };
 
 export default function ImportOnshape() {
+  const [searchParams] = useSearchParams();
+  const robotId = searchParams.get('robotId') ?? '';
+  const subsystemId = searchParams.get('subsystemId') ?? '';
   const [systems, setSystems] = useState<SelectOption[]>(FALLBACK_SYSTEM_OPTIONS);
   const [methods, setMethods] = useState<SelectOption[]>(FALLBACK_METHOD_OPTIONS);
   const [materials, setMaterials] = useState<SelectOption[]>(FALLBACK_MATERIAL_OPTIONS);
@@ -106,6 +111,7 @@ export default function ImportOnshape() {
   const [edits, setEdits] = useState<Record<string, Edit>>({});
   const [thumb, setThumb] = useState<string | null>(null);
   const [result, setResult] = useState<OnshapeImportResult | null>(null);
+  const [subsystem, setSubsystem] = useState<RobotSubsystem | null>(null);
   const [busy, setBusy] = useState<'preview' | 'import' | null>(null);
   const [error, setError] = useState('');
 
@@ -120,6 +126,11 @@ export default function ImportOnshape() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!subsystemId) return;
+    robotApi.getSubsystem(subsystemId).then(setSubsystem).catch(() => setSubsystem(null));
+  }, [subsystemId]);
 
   // 所有 BOM 列（合併三類，逐件可編輯）
   const allRows: OnshapeBomItem[] = useMemo(
@@ -225,6 +236,8 @@ export default function ImportOnshape() {
         await onshapeApi.importBom({
           url: url.trim(),
           systemId: Number(systemId),
+          ...(robotId ? { robotId } : {}),
+          ...(subsystemId ? { subsystemId } : {}),
           ...(methodId ? { manufacturingMethodId: Number(methodId) } : {}),
           items,
         }),
@@ -247,6 +260,11 @@ export default function ImportOnshape() {
         ← 返回看板
       </Link>
       <h1 className="mt-2 text-lg font-bold text-slate-900">Onshape BOM 匯入</h1>
+      {subsystem && (
+        <p className="mt-1 text-sm text-slate-500">
+          匯入到 {subsystem.robot?.name} / {subsystem.name}
+        </p>
+      )}
 
       <form onSubmit={previewBom} className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <label className="block text-sm font-medium text-slate-700">

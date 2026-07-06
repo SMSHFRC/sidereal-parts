@@ -11,6 +11,8 @@ import NewTask from './pages/NewTask';
 import ImportOnshape from './pages/ImportOnshape';
 import OnshapePanel from './pages/OnshapePanel';
 import MasterDataSettings from './pages/MasterDataSettings';
+import Robots from './pages/Robots';
+import SubsystemDetail from './pages/SubsystemDetail';
 
 function WakeGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'checking' | 'ok' | 'down'>('checking');
@@ -125,6 +127,7 @@ function Layout({ children }: { children: ReactNode }) {
               新增
             </NavLink>
             <NavLink to="/import">匯入</NavLink>
+            <NavLink to="/robots">機器人</NavLink>
             {user.role === 'admin' && <NavLink to="/settings/master-data">主檔</NavLink>}
             <div className="shrink-0">
               <OnshapeConnectButton />
@@ -180,6 +183,26 @@ export default function App() {
                 <MasterDataSettings />
               </Layout>
             </RequireAdmin>
+          }
+        />
+        <Route
+          path="/robots"
+          element={
+            <RequireAuth>
+              <Layout>
+                <Robots />
+              </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/subsystems/:id"
+          element={
+            <RequireAuth>
+              <Layout>
+                <SubsystemDetail />
+              </Layout>
+            </RequireAuth>
           }
         />
         <Route
