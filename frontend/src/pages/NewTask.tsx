@@ -185,7 +185,7 @@ export default function NewTask() {
         ) : (
           <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
             任務建立後進入任務池，由隊員自行接單
-            {postProcessId ? '；加工完成交棒後，後處理同樣開放認領（積分拆帳：一般加工 5/件，3D列印 1/件、後處理 2/件）' : ''}。
+            {postProcessId ? '；加工完成交棒後，後處理同樣開放認領（積分拆帳：一般加工 5/件，3D列印及雷切 1/件、後處理 2/件）' : ''}。
           </p>
         )}
 
