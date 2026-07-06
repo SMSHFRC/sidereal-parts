@@ -84,7 +84,29 @@ async function getValidToken(userId) {
 
 // ---------- API 代理 ----------
 
-async function apiFetch(userId, path, { raw = false } = {}) {
+const summarizeOnshapeBody = (body) => {
+  if (!body) return null;
+  try {
+    const data = JSON.parse(body);
+    const candidates = [
+      data.message,
+      data.error,
+      data.error_description,
+      data.moreInfo,
+      data.cause,
+      data.details,
+      data.name,
+    ];
+    const message = candidates.find((value) => typeof value === 'string' && value.trim());
+    if (message) return message.trim();
+  } catch {
+    // Non-JSON responses are common for proxy and gateway errors.
+  }
+  const plain = body.replace(/\s+/g, ' ').trim();
+  return plain || null;
+};
+
+async function apiFetch(userId, path, { raw = false, label = 'Onshape API' } = {}) {
   assertEnabled();
   const token = await getValidToken(userId);
   const res = await fetch(`${env.ONSHAPE_API_BASE}${path}`, {
@@ -101,8 +123,18 @@ async function apiFetch(userId, path, { raw = false } = {}) {
   if (res.status === 404) throw ApiError.notFound('Onshape 找不到此文件或元素');
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    console.error('[onshape api] %s %s %s', res.status, path, body.slice(0, 300));
-    throw new ApiError(502, 'Onshape API 呼叫失敗', 'ONSHAPE_API_ERROR');
+    const summary = summarizeOnshapeBody(body);
+    console.error('[onshape api] %s %s %s', res.status, path, body.slice(0, 500));
+    throw new ApiError(
+      502,
+      `${label}失敗（${res.status}）${summary ? `：${summary.slice(0, 180)}` : ''}`,
+      'ONSHAPE_API_ERROR',
+      {
+        onshapeStatus: res.status,
+        path,
+        response: body.slice(0, 500),
+      },
+    );
   }
   return raw ? res : res.json();
 }
@@ -223,6 +255,7 @@ async function fetchAssemblyBomRows(userId, { did, wvm, wvmId, eid }) {
   const bom = await apiFetch(
     userId,
     `/assemblies/d/${did}/${wvm}/${wvmId}/e/${eid}/bom?indented=false&multiLevel=false`,
+    { label: 'Onshape BOM 讀取' },
   );
   const headers = bom.headers ?? [];
   const findHeaderId = (...names) =>
@@ -264,7 +297,7 @@ async function makeImportPreview(userId, url) {
   }
 
   const [doc, rows] = await Promise.all([
-    apiFetch(userId, `/documents/${ref.did}`),
+    apiFetch(userId, `/documents/${ref.did}`, { label: 'Onshape 文件讀取' }),
     fetchAssemblyBomRows(userId, ref),
   ]);
   const classified = rows.map((row) => {
@@ -340,7 +373,7 @@ export const onshapeService = {
   async resolve(userId, url) {
     const ref = parseOnshapeUrl(url);
     if (!ref) throw ApiError.badRequest('不是有效的 Onshape 文件連結', 'NOT_ONSHAPE_URL');
-    const doc = await apiFetch(userId, `/documents/${ref.did}`);
+    const doc = await apiFetch(userId, `/documents/${ref.did}`, { label: 'Onshape 文件讀取' });
     return {
       ref,
       documentName: doc.name,
@@ -354,7 +387,9 @@ export const onshapeService = {
 
   // Part Studio 內的零件清單（名稱/材料，給自動帶入用）
   async elementParts(userId, { did, wvm, wvmId, eid }) {
-    const parts = await apiFetch(userId, `/parts/d/${did}/${wvm}/${wvmId}/e/${eid}`);
+    const parts = await apiFetch(userId, `/parts/d/${did}/${wvm}/${wvmId}/e/${eid}`, {
+      label: 'Onshape 零件讀取',
+    });
     return (Array.isArray(parts) ? parts : []).map((p) => ({
       partId: p.partId,
       name: p.name,
@@ -609,7 +644,7 @@ export const onshapeService = {
     const res = await apiFetch(
       userId,
       `/thumbnails/d/${did}/${wvm}/${wvmId}/e/${eid}/s/300x170`,
-      { raw: true },
+      { raw: true, label: 'Onshape 縮圖讀取' },
     );
     const buf = Buffer.from(await res.arrayBuffer());
     return { buf, contentType: res.headers.get('content-type') ?? 'image/png' };
@@ -627,6 +662,7 @@ export const onshapeService = {
     const data = await apiFetch(
       userId,
       `/parts/d/${did}/${wvm}/${wvmId}/e/${eid}/partid/${encodeURIComponent(partId)}/shadedviews?${q}`,
+      { label: 'Onshape 零件縮圖讀取' },
     );
     const b64 = Array.isArray(data.images) ? data.images[0] : null;
     if (!b64) throw ApiError.notFound('無法產生零件縮圖');
