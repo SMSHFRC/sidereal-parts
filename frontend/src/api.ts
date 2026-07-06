@@ -254,10 +254,18 @@ export interface CreateTaskInput {
 export class ApiError extends Error {
   code: string;
   status: number;
-  constructor(status: number, code: string, message: string) {
+  details?: Array<{ field: string; message: string }>;
+
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details?: Array<{ field: string; message: string }>,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -342,7 +350,11 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
     throw new ApiError(401, 'UNAUTHORIZED', '登入已過期，請重新登入');
   }
 
-  let json: { success: boolean; data?: T; error?: { code: string; message: string } };
+  let json: {
+    success: boolean;
+    data?: T;
+    error?: { code: string; message: string; details?: Array<{ field: string; message: string }> };
+  };
   try {
     json = await res.json();
   } catch {
@@ -350,7 +362,10 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   }
   if (!res.ok || !json.success) {
     const e = json.error ?? { code: 'UNKNOWN', message: '未知錯誤' };
-    throw new ApiError(res.status, e.code, e.message);
+    const detailText = e.details?.length
+      ? `：${e.details.map((d) => `${d.field || '欄位'} ${d.message}`).join('；')}`
+      : '';
+    throw new ApiError(res.status, e.code, `${e.message}${detailText}`, e.details);
   }
   return json.data as T;
 }

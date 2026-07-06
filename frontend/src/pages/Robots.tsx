@@ -7,17 +7,6 @@ import { Empty, ErrorBox, Spinner } from '../ui';
 const inputCls =
   'min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-base outline-none focus:border-slate-900';
 
-function hiddenCode(value: string, fallback: string) {
-  return (
-    value
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9_-]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .slice(0, 24) || fallback
-  );
-}
-
 export default function Robots() {
   const { user } = useAuth();
   const [robots, setRobots] = useState<Robot[] | null>(null);
@@ -44,7 +33,6 @@ export default function Robots() {
     setError('');
     try {
       await robotApi.create({
-        code: hiddenCode(form.name, 'ROBOT'),
         name: form.name.trim(),
         ...(form.note.trim() ? { note: form.note.trim() } : {}),
       });
@@ -64,7 +52,6 @@ export default function Robots() {
     setError('');
     try {
       await robotApi.createSubsystem(robotId, {
-        code: hiddenCode(sub.name, 'SUBSYS'),
         name: sub.name.trim(),
       });
       setSubForms((prev) => ({ ...prev, [robotId]: { name: '' } }));
