@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchOnshapeThumbnail, onshapeApi, type Task } from '../api';
+import { fetchOnshapePartThumbnail, fetchOnshapeThumbnail, onshapeApi, type Task } from '../api';
 
 export function OnshapeConnectButton() {
   const [state, setState] = useState<'hidden' | 'connected' | 'disconnected'>('hidden');
@@ -65,26 +65,41 @@ export function OnshapeCard({ task }: { task: Task }) {
   const [thumb, setThumb] = useState<string | null>(null);
   const [state, setState] = useState<'loading' | 'ok' | 'not_connected' | 'error'>('loading');
 
+  const onshapePartId = task.onshapePartId;
   useEffect(() => {
     if (!onshapeDid || !onshapeWvm || !onshapeWvmId || !onshapeEid) return;
     let url: string | null = null;
     let alive = true;
-    fetchOnshapeThumbnail({ did: onshapeDid, wvm: onshapeWvm, wvmId: onshapeWvmId, eid: onshapeEid })
-      .then((u) => {
+    // 匯入的零件有 partId → 顯示該零件的圖；否則顯示 element（整組）縮圖
+    (async () => {
+      if (onshapePartId) {
+        const p = await fetchOnshapePartThumbnail({
+          did: onshapeDid,
+          wvm: onshapeWvm,
+          wvmId: onshapeWvmId,
+          eid: onshapeEid,
+          partId: onshapePartId,
+        });
+        if (p) return { url: p, notConnected: false };
+      }
+      const e = await fetchOnshapeThumbnail({ did: onshapeDid, wvm: onshapeWvm, wvmId: onshapeWvmId, eid: onshapeEid });
+      return { url: e, notConnected: e === null };
+    })()
+      .then(({ url: u, notConnected }) => {
         if (!alive) return;
-        if (u === null) setState('not_connected');
-        else {
+        if (notConnected) setState('not_connected');
+        else if (u) {
           url = u;
           setThumb(u);
           setState('ok');
-        }
+        } else setState('error');
       })
       .catch(() => alive && setState('error'));
     return () => {
       alive = false;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [onshapeDid, onshapeWvm, onshapeWvmId, onshapeEid]);
+  }, [onshapeDid, onshapeWvm, onshapeWvmId, onshapeEid, onshapePartId]);
 
   if (!onshapeDid || !onshapeEid) return null;
   const connect = async () => {

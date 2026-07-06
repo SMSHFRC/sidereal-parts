@@ -58,4 +58,11 @@ export const onshapeController = {
     res.set('Cache-Control', 'private, max-age=300'); // 縮圖 5 分鐘快取
     res.send(buf);
   }),
+
+  partThumbnail: asyncHandler(async (req, res) => {
+    const { buf, contentType } = await onshapeService.partThumbnail(req.user.id, req.validatedQuery);
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'private, max-age=600');
+    res.send(buf);
+  }),
 };

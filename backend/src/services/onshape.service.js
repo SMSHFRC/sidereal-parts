@@ -586,4 +586,22 @@ export const onshapeService = {
     const buf = Buffer.from(await res.arrayBuffer());
     return { buf, contentType: res.headers.get('content-type') ?? 'image/png' };
   },
+
+  // 單一零件縮圖：用 Part Studio 的 shaded view 算出該 part 的等角圖
+  async partThumbnail(userId, { did, wvm, wvmId, eid, partId }) {
+    const q = new URLSearchParams({
+      outputHeight: '170',
+      outputWidth: '300',
+      pixelSize: '0',
+      // 等角視角矩陣（isometric）
+      viewMatrix: '0.707,0.707,0,0,-0.408,0.408,0.816,0,0.577,-0.577,0.577,0',
+    });
+    const data = await apiFetch(
+      userId,
+      `/parts/d/${did}/${wvm}/${wvmId}/e/${eid}/partid/${encodeURIComponent(partId)}/shadedviews?${q}`,
+    );
+    const b64 = Array.isArray(data.images) ? data.images[0] : null;
+    if (!b64) throw ApiError.notFound('無法產生零件縮圖');
+    return { buf: Buffer.from(b64, 'base64'), contentType: 'image/png' };
+  },
 };

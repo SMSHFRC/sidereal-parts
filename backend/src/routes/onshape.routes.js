@@ -5,6 +5,7 @@ import { validate } from '../middleware/validate.js';
 import {
   resolveSchema,
   elementRefSchema,
+  partThumbnailSchema,
   importPreviewSchema,
   importBomSchema,
 } from '../validators/onshape.schema.js';
@@ -25,6 +26,7 @@ router.get('/parts', validate(elementRefSchema), onshapeController.parts); // Pa
 router.get('/bom', validate(elementRefSchema), onshapeController.bom); // Assembly BOM
 router.post('/import/preview', validate(importPreviewSchema), onshapeController.importPreview);
 router.post('/import', validate(importBomSchema), onshapeController.importBom);
-router.get('/thumbnail', validate(elementRefSchema), onshapeController.thumbnail); // 縮圖代理
+router.get('/thumbnail', validate(elementRefSchema), onshapeController.thumbnail); // element 縮圖代理
+router.get('/part-thumbnail', validate(partThumbnailSchema), onshapeController.partThumbnail); // 單一零件縮圖
 
 export default router;

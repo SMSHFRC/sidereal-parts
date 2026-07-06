@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ApiError,
@@ -6,6 +6,7 @@ import {
   FALLBACK_METHOD_OPTIONS,
   FALLBACK_POST_PROCESS_OPTIONS,
   FALLBACK_SYSTEM_OPTIONS,
+  fetchOnshapePartThumbnail,
   fetchOnshapeThumbnail,
   metaApi,
   onshapeApi,
@@ -13,9 +14,74 @@ import {
   type OnshapeBomItem,
   type OnshapeImportItem,
   type OnshapeImportPreview,
+  type OnshapeRef,
   type OnshapeImportResult,
 } from '../api';
 import { ErrorBox, Spinner } from '../ui';
+
+// 逐件縮圖：捲到才載入（避免一次對 Onshape 發數十個算圖請求）
+function PartThumb({ row, osRef }: { row: OnshapeBomItem; osRef: OnshapeRef }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [state, setState] = useState<'wait' | 'loading' | 'ok' | 'none'>('wait');
+  const boxRef = useRef<HTMLDivElement>(null);
+  // 僅同文件、且有 element + partId 的零件可算圖
+  const canLoad =
+    Boolean(row.sourcePartId && row.sourceElementId) &&
+    (!row.sourceDocumentId || row.sourceDocumentId === osRef.did);
+
+  useEffect(() => {
+    if (!canLoad || !boxRef.current) {
+      setState('none');
+      return;
+    }
+    let objectUrl: string | null = null;
+    let done = false;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0].isIntersecting || done) return;
+        done = true;
+        io.disconnect();
+        setState('loading');
+        fetchOnshapePartThumbnail({
+          did: osRef.did,
+          wvm: osRef.wvm,
+          wvmId: osRef.wvmId,
+          eid: row.sourceElementId!,
+          partId: row.sourcePartId!,
+        })
+          .then((u) => {
+            if (u) {
+              objectUrl = u;
+              setSrc(u);
+              setState('ok');
+            } else setState('none');
+          })
+          .catch(() => setState('none'));
+      },
+      { rootMargin: '300px' },
+    );
+    io.observe(boxRef.current);
+    return () => {
+      io.disconnect();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [canLoad, osRef, row]);
+
+  return (
+    <div
+      ref={boxRef}
+      className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50"
+    >
+      {state === 'ok' && src ? (
+        <img src={src} alt="" className="h-full w-full object-contain" />
+      ) : state === 'loading' ? (
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500" />
+      ) : (
+        <span className="text-[9px] text-slate-300">無圖</span>
+      )}
+    </div>
+  );
+}
 
 const inputCls =
   'mt-1 w-full min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-base outline-none focus:border-slate-900';
@@ -307,12 +373,15 @@ export default function ImportOnshape() {
                   className={`rounded-lg border border-slate-200 border-l-4 ${border} bg-white p-3`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-900">{row.name ?? '未命名零件'}</p>
-                      <p className="text-xs text-slate-500">
-                        {row.partNumber ?? '無料號'} · BOM 材料：{row.material ?? '無'}
-                        {row.classificationReason ? ` · 判定：${row.classificationReason}` : ''}
-                      </p>
+                    <div className="flex min-w-0 gap-2">
+                      <PartThumb row={row} osRef={preview.ref} />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">{row.name ?? '未命名零件'}</p>
+                        <p className="text-xs text-slate-500">
+                          {row.partNumber ?? '無料號'} · BOM 材料：{row.material ?? '無'}
+                          {row.classificationReason ? ` · 判定：${row.classificationReason}` : ''}
+                        </p>
+                      </div>
                     </div>
                     <div className="flex w-40 shrink-0 gap-1">
                       <button onClick={() => setEdit(row.rowKey, { classification: 'made' })} className={clsBtn(e.classification === 'made', 'bg-slate-900 text-white')}>自製</button>

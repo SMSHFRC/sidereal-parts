@@ -16,6 +16,11 @@ export const resolveSchema = {
 
 export const elementRefSchema = { query: elementRef };
 
+// 單一零件縮圖：element 參照 + partId（partId 非 hex，Onshape 用短碼如 'JHD'）
+export const partThumbnailSchema = {
+  query: elementRef.extend({ partId: z.string().min(1).max(64) }),
+};
+
 // 逐件覆寫：由前端在預覽後可調整分類/加工方式/材料/後處理/數量
 const importItem = z.object({
   rowKey: z.string().min(1).max(120),

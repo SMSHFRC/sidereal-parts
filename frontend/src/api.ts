@@ -404,6 +404,22 @@ export async function fetchOnshapeThumbnail(r: {
   return URL.createObjectURL(await res.blob());
 }
 
+/** 單一零件縮圖（Part Studio shaded view）。個別失敗回 null，不擋清單。 */
+export async function fetchOnshapePartThumbnail(r: {
+  did: string;
+  wvm: string;
+  wvmId: string;
+  eid: string;
+  partId: string;
+}): Promise<string | null> {
+  const path = `/onshape/part-thumbnail?did=${r.did}&wvm=${r.wvm}&wvmId=${r.wvmId}&eid=${r.eid}&partId=${encodeURIComponent(r.partId)}`;
+  const res = await fetch(API_BASE + path, {
+    headers: { Authorization: `Bearer ${tokens.access}` },
+  });
+  if (!res.ok) return null;
+  return URL.createObjectURL(await res.blob());
+}
+
 // ---------- 狀態機（與 backend/src/constants/taskStatus.js 對齊） ----------
 // 有後處理：processing -> post_processing(交棒，加工分入帳) -> completed(後處理者，後處理分入帳)
 // 無後處理：processing -> completed(加工者，全額入帳)
