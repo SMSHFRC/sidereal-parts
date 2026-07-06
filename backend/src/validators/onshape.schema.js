@@ -31,9 +31,9 @@ const importItem = z.object({
   quantity: z.coerce.number().int().positive().max(100000).optional(),
 });
 
-const importBody = z.object({
+const importBaseBody = z.object({
   url: z.string().trim().max(2048).url('必須是合法 URL'),
-  systemId: z.coerce.number().int().positive(),
+  systemId: z.coerce.number().int().positive().optional(),
   robotId: z.coerce.bigint().optional(),
   subsystemId: z.coerce.bigint().optional(),
   // 全域「預設值」；逐件未指定時採用（皆選填）
@@ -43,5 +43,10 @@ const importBody = z.object({
   items: z.array(importItem).max(1000).optional(),
 });
 
-export const importPreviewSchema = { body: importBody.pick({ url: true }) };
+const importBody = importBaseBody.refine((v) => v.systemId || v.subsystemId, {
+  message: '請選擇系統或從子系統匯入',
+  path: ['systemId'],
+});
+
+export const importPreviewSchema = { body: importBaseBody.pick({ url: true }) };
 export const importBomSchema = { body: importBody };

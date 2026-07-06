@@ -124,6 +124,7 @@ export interface RobotSubsystem extends SubsystemRef {
   createdAt: string;
   updatedAt: string;
   robot?: RobotRef;
+  system?: { id: number; code: string; name: string } | null;
   _count?: { tasks: number };
 }
 
@@ -391,9 +392,9 @@ export const taskApi = {
 export const robotApi = {
   list: () => api<Robot[]>('/robots'),
   get: (id: string) => api<Robot>(`/robots/${id}`),
-  create: (input: { code: string; name: string; note?: string }) =>
+  create: (input: { code?: string; name: string; note?: string }) =>
     api<Robot>('/robots', { method: 'POST', body: JSON.stringify(input) }),
-  createSubsystem: (robotId: string, input: { code: string; name: string; note?: string }) =>
+  createSubsystem: (robotId: string, input: { code?: string; name: string; note?: string }) =>
     api<RobotSubsystem>(`/robots/${robotId}/subsystems`, {
       method: 'POST',
       body: JSON.stringify(input),
@@ -436,7 +437,7 @@ export const onshapeApi = {
     }),
   importBom: (input: {
     url: string;
-    systemId: number;
+    systemId?: number;
     robotId?: string;
     subsystemId?: string;
     manufacturingMethodId?: number; // 全域預設（逐件未指定時採用）

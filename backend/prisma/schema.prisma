@@ -130,6 +130,7 @@ model System {
   name     String
   isActive Boolean @default(true) @map("is_active")
   tasks    Task[]
+  subsystems RobotSubsystem[]
 
   @@map("systems")
 }
@@ -152,6 +153,7 @@ model Robot {
 model RobotSubsystem {
   id        BigInt   @id @default(autoincrement())
   robotId   BigInt   @map("robot_id")
+  systemId  Int?     @map("system_id")
   code      String
   name      String
   note      String?
@@ -160,10 +162,12 @@ model RobotSubsystem {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   robot Robot @relation(fields: [robotId], references: [id], onDelete: Cascade)
+  system System? @relation(fields: [systemId], references: [id])
   tasks Task[]
 
   @@unique([robotId, code])
   @@index([robotId])
+  @@index([systemId])
   @@map("robot_subsystems")
 }
 

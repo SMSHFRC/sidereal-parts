@@ -10,7 +10,7 @@ const note = z.string().trim().max(2000).nullable().optional();
 
 export const createRobotSchema = {
   body: z.object({
-    code,
+    code: code.optional(),
     name,
     note,
     isActive: z.boolean().optional(),
@@ -32,7 +32,7 @@ export const updateRobotSchema = {
 export const createSubsystemSchema = {
   params: robotIdParam,
   body: z.object({
-    code,
+    code: code.optional(),
     name,
     note,
     isActive: z.boolean().optional(),

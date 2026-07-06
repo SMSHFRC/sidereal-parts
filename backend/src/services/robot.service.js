@@ -6,6 +6,7 @@ const robotInclude = {
   subsystems: {
     orderBy: { id: 'asc' },
     include: {
+      system: { select: { id: true, code: true, name: true } },
       _count: { select: { tasks: true } },
     },
   },
@@ -14,11 +15,46 @@ const robotInclude = {
 
 const subsystemInclude = {
   robot: { select: { id: true, code: true, name: true } },
+  system: { select: { id: true, code: true, name: true } },
   _count: { select: { tasks: true } },
 };
 
 function ensureAdmin(actor) {
   if (actor.role !== ROLES.ADMIN) throw ApiError.forbidden('只有管理員可以管理機器人');
+}
+
+function sanitizeCode(value, fallback) {
+  const base = String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 24);
+  return base || fallback;
+}
+
+async function uniqueCode(model, desired, fallback) {
+  const base = sanitizeCode(desired, fallback);
+  for (let i = 0; i < 1000; i += 1) {
+    const suffix = i === 0 ? '' : `_${i}`;
+    const code = `${base.slice(0, 32 - suffix.length)}${suffix}`;
+    const exists = await model.findUnique({ where: { code } });
+    if (!exists) return code;
+  }
+  return `${fallback}_${Date.now().toString(36).toUpperCase()}`.slice(0, 32);
+}
+
+async function uniqueSubsystemCode(tx, robotId, desired) {
+  const base = sanitizeCode(desired, 'SUBSYS');
+  for (let i = 0; i < 1000; i += 1) {
+    const suffix = i === 0 ? '' : `_${i}`;
+    const code = `${base.slice(0, 32 - suffix.length)}${suffix}`;
+    const exists = await tx.robotSubsystem.findUnique({
+      where: { robotId_code: { robotId, code } },
+    });
+    if (!exists) return code;
+  }
+  return `SUBSYS_${Date.now().toString(36).toUpperCase()}`.slice(0, 32);
 }
 
 export const robotService = {
@@ -35,11 +71,12 @@ export const robotService = {
     return robot;
   },
 
-  create(data, actor) {
+  async create(data, actor) {
     ensureAdmin(actor);
+    const code = await uniqueCode(prisma.robot, data.code ?? data.name, 'ROBOT');
     return prisma.robot.create({
       data: {
-        code: data.code,
+        code,
         name: data.name,
         note: data.note ?? null,
         isActive: data.isActive ?? true,
@@ -78,16 +115,32 @@ export const robotService = {
 
   async createSubsystem(robotId, data, actor) {
     ensureAdmin(actor);
-    await this.get(robotId);
-    return prisma.robotSubsystem.create({
-      data: {
-        robotId,
-        code: data.code,
-        name: data.name,
-        note: data.note ?? null,
-        isActive: data.isActive ?? true,
-      },
-      include: subsystemInclude,
+    const robot = await this.get(robotId);
+    return prisma.$transaction(async (tx) => {
+      const subsystemCode = await uniqueSubsystemCode(tx, robotId, data.code ?? data.name);
+      const systemCode = await uniqueCode(
+        tx.system,
+        `${robot.code}_${subsystemCode}`,
+        `SYS_${robotId}`,
+      );
+      const system = await tx.system.create({
+        data: {
+          code: systemCode,
+          name: data.name,
+          isActive: data.isActive ?? true,
+        },
+      });
+      return tx.robotSubsystem.create({
+        data: {
+          robotId,
+          systemId: system.id,
+          code: subsystemCode,
+          name: data.name,
+          note: data.note ?? null,
+          isActive: data.isActive ?? true,
+        },
+        include: subsystemInclude,
+      });
     });
   },
 

@@ -12,8 +12,8 @@ export default function Robots() {
   const [robots, setRobots] = useState<Robot[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ code: '', name: '', note: '' });
-  const [subForms, setSubForms] = useState<Record<string, { code: string; name: string }>>({});
+  const [form, setForm] = useState({ name: '', note: '' });
+  const [subForms, setSubForms] = useState<Record<string, { name: string }>>({});
 
   const load = useCallback(() => {
     setError('');
@@ -28,16 +28,15 @@ export default function Robots() {
 
   const createRobot = async (e: FormEvent) => {
     e.preventDefault();
-    if (!form.code.trim() || !form.name.trim()) return;
+    if (!form.name.trim()) return;
     setBusy(true);
     setError('');
     try {
       await robotApi.create({
-        code: form.code.trim(),
         name: form.name.trim(),
         ...(form.note.trim() ? { note: form.note.trim() } : {}),
       });
-      setForm({ code: '', name: '', note: '' });
+      setForm({ name: '', note: '' });
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '建立機器人失敗');
@@ -48,12 +47,12 @@ export default function Robots() {
 
   const createSubsystem = async (robotId: string) => {
     const sub = subForms[robotId];
-    if (!sub?.code.trim() || !sub?.name.trim()) return;
+    if (!sub?.name.trim()) return;
     setBusy(true);
     setError('');
     try {
-      await robotApi.createSubsystem(robotId, { code: sub.code.trim(), name: sub.name.trim() });
-      setSubForms((prev) => ({ ...prev, [robotId]: { code: '', name: '' } }));
+      await robotApi.createSubsystem(robotId, { name: sub.name.trim() });
+      setSubForms((prev) => ({ ...prev, [robotId]: { name: '' } }));
       load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '建立子系統失敗');
@@ -74,14 +73,8 @@ export default function Robots() {
       {user?.role === 'admin' && (
         <form
           onSubmit={createRobot}
-          className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-[1fr_1.5fr_2fr_auto]"
+          className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-[1.5fr_2fr_auto]"
         >
-          <input
-            value={form.code}
-            onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
-            placeholder="代碼"
-            className={inputCls}
-          />
           <input
             value={form.name}
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
@@ -114,7 +107,7 @@ export default function Robots() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="font-semibold text-slate-900">
-                    {robot.code} · {robot.name}
+                    {robot.name}
                   </h2>
                   {robot.note && <p className="mt-1 text-sm text-slate-500">{robot.note}</p>}
                 </div>
@@ -129,7 +122,7 @@ export default function Robots() {
                     className="rounded-lg border border-slate-200 px-3 py-2 active:bg-slate-50"
                   >
                     <p className="font-medium text-slate-900">
-                      {sub.code} · {sub.name}
+                      {sub.name}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">{sub._count?.tasks ?? 0} 個任務</p>
                   </Link>
@@ -137,24 +130,13 @@ export default function Robots() {
               </div>
 
               {user?.role === 'admin' && (
-                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1.5fr_auto]">
-                  <input
-                    value={subForms[robot.id]?.code ?? ''}
-                    onChange={(e) =>
-                      setSubForms((p) => ({
-                        ...p,
-                        [robot.id]: { code: e.target.value, name: p[robot.id]?.name ?? '' },
-                      }))
-                    }
-                    placeholder="子系統代碼"
-                    className={inputCls}
-                  />
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1.5fr_auto]">
                   <input
                     value={subForms[robot.id]?.name ?? ''}
                     onChange={(e) =>
                       setSubForms((p) => ({
                         ...p,
-                        [robot.id]: { code: p[robot.id]?.code ?? '', name: e.target.value },
+                        [robot.id]: { name: e.target.value },
                       }))
                     }
                     placeholder="子系統名稱"

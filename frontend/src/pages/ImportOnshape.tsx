@@ -114,6 +114,7 @@ export default function ImportOnshape() {
   const [subsystem, setSubsystem] = useState<RobotSubsystem | null>(null);
   const [busy, setBusy] = useState<'preview' | 'import' | null>(null);
   const [error, setError] = useState('');
+  const importingToSubsystem = Boolean(subsystemId);
 
   useEffect(() => {
     metaApi
@@ -200,7 +201,7 @@ export default function ImportOnshape() {
 
   const importBom = async () => {
     if (!preview) return;
-    if (!systemId) {
+    if (!importingToSubsystem && !systemId) {
       setError('請選擇系統');
       return;
     }
@@ -235,7 +236,7 @@ export default function ImportOnshape() {
       setResult(
         await onshapeApi.importBom({
           url: url.trim(),
-          systemId: Number(systemId),
+          ...(!importingToSubsystem ? { systemId: Number(systemId) } : {}),
           ...(robotId ? { robotId } : {}),
           ...(subsystemId ? { subsystemId } : {}),
           ...(methodId ? { manufacturingMethodId: Number(methodId) } : {}),
@@ -278,16 +279,18 @@ export default function ImportOnshape() {
             className={inputCls}
           />
         </label>
-        <div className="mt-3 grid gap-3 md:grid-cols-4">
-          <label className="block text-sm font-medium text-slate-700">
-            系統 *
-            <select value={systemId} onChange={(e) => setSystemId(e.target.value)} className={inputCls}>
-              <option value="">請選擇</option>
-              {systems.map((o) => (
-                <option key={o.id} value={o.id}>{o.label}</option>
-              ))}
-            </select>
-          </label>
+        <div className={`mt-3 grid gap-3 ${importingToSubsystem ? 'md:grid-cols-3' : 'md:grid-cols-4'}`}>
+          {!importingToSubsystem && (
+            <label className="block text-sm font-medium text-slate-700">
+              系統 *
+              <select value={systemId} onChange={(e) => setSystemId(e.target.value)} className={inputCls}>
+                <option value="">請選擇</option>
+                {systems.map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="block text-sm font-medium text-slate-700">
             預設加工方式
             <select value={methodId} onChange={(e) => setMethodId(e.target.value)} className={inputCls}>

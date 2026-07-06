@@ -75,13 +75,14 @@ test('機器人子系統任務完成後只留在子系統清單', async () => {
   const robot = await api
     .post('/api/v1/robots')
     .set(auth(ctx.adminToken))
-    .send({ code: `BOT_${S}`, name: 'Test Robot' });
+    .send({ name: `Test Robot ${S}` });
   assert.equal(robot.status, 201);
   const subsystem = await api
     .post(`/api/v1/robots/${robot.body.data.id}/subsystems`)
     .set(auth(ctx.adminToken))
-    .send({ code: 'ARM', name: 'Arm' });
+    .send({ name: 'Arm' });
   assert.equal(subsystem.status, 201);
+  assert.ok(subsystem.body.data.system?.id);
 
   const created = await api
     .post('/api/v1/tasks')

@@ -56,9 +56,7 @@ export default function SubsystemDetail() {
       <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-slate-500">{subsystem.robot?.name}</p>
-          <h1 className="text-xl font-bold text-slate-900">
-            {subsystem.code} · {subsystem.name}
-          </h1>
+          <h1 className="text-xl font-bold text-slate-900">{subsystem.name}</h1>
           {subsystem.note && <p className="mt-1 text-sm text-slate-500">{subsystem.note}</p>}
         </div>
         <Link

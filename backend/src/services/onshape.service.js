@@ -374,19 +374,20 @@ export const onshapeService = {
 
   async importBom(userId, { url, systemId, robotId, subsystemId, manufacturingMethodId, materialId, postProcessId, items }) {
     const preview = await makeImportPreview(userId, url);
-    const system = await prisma.system.findUnique({ where: { id: systemId } });
-    if (!system) throw ApiError.badRequest('系統不存在');
     let robotScope = {};
+    let resolvedSystemId = systemId;
     if (subsystemId != null) {
       const subsystem = await prisma.robotSubsystem.findUnique({
         where: { id: subsystemId },
-        select: { id: true, robotId: true, isActive: true },
+        select: { id: true, robotId: true, systemId: true, isActive: true },
       });
       if (!subsystem || !subsystem.isActive) throw ApiError.badRequest('子系統不存在或已停用');
+      if (!subsystem.systemId) throw ApiError.badRequest('子系統尚未綁定系統');
       if (robotId != null && subsystem.robotId !== robotId) {
         throw ApiError.badRequest('子系統不屬於指定機器人');
       }
       robotScope = { robotId: subsystem.robotId, subsystemId: subsystem.id };
+      resolvedSystemId = subsystem.systemId;
     } else if (robotId != null) {
       const robot = await prisma.robot.findUnique({
         where: { id: robotId },
@@ -395,6 +396,10 @@ export const onshapeService = {
       if (!robot || !robot.isActive) throw ApiError.badRequest('機器人不存在或已停用');
       robotScope = { robotId: robot.id };
     }
+    const system = resolvedSystemId
+      ? await prisma.system.findUnique({ where: { id: resolvedSystemId } })
+      : null;
+    if (!system) throw ApiError.badRequest('系統不存在');
 
     // 逐件覆寫表（key = rowKey）；全域欄位作為未指定時的預設值
     const overrides = new Map((items ?? []).map((it) => [it.rowKey, it]));
@@ -492,7 +497,7 @@ export const onshapeService = {
         const existing = await tx.task.findFirst({ where: identity });
         const taskData = {
           manufacturingMethodId: plan.methodId,
-          systemId,
+          systemId: resolvedSystemId,
           ...robotScope,
           materialId: resolvedMaterialId,
           postProcessId: plan.itemPostProcessId ?? null,
