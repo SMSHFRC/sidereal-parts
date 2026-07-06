@@ -121,9 +121,13 @@ function useVisibleTasks(tasks: Task[], me: string, activeView: ViewKey) {
     .filter((t) => view.match(t, me))
     .map((task, index) => ({ task, index }))
     .sort((a, b) => {
-      const aPendingReview = a.task.status === 'pending_review' ? 0 : 1;
-      const bPendingReview = b.task.status === 'pending_review' ? 0 : 1;
-      return aPendingReview - bPendingReview || a.index - b.index;
+      const priority = (task: Task) => {
+        if (task.status === 'pending_review') return 0;
+        if (task.status === 'processing' && task.reviewRejected) return 1;
+        if (task.status === 'processing') return 2;
+        return 3;
+      };
+      return priority(a.task) - priority(b.task) || a.index - b.index;
     })
     .map(({ task }) => task);
   return { counts, visible };
