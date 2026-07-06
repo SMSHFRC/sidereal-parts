@@ -130,7 +130,13 @@ export default function ImportOnshape() {
 
   useEffect(() => {
     if (!subsystemId) return;
-    robotApi.getSubsystem(subsystemId).then(setSubsystem).catch(() => setSubsystem(null));
+    robotApi
+      .getSubsystem(subsystemId)
+      .then((sub) => {
+        setSubsystem(sub);
+        if (sub.system?.id) setSystemId(String(sub.system.id));
+      })
+      .catch(() => setSubsystem(null));
   }, [subsystemId]);
 
   // 所有 BOM 列（合併三類，逐件可編輯）
@@ -236,7 +242,7 @@ export default function ImportOnshape() {
       setResult(
         await onshapeApi.importBom({
           url: url.trim(),
-          ...(!importingToSubsystem ? { systemId: Number(systemId) } : {}),
+          ...(systemId ? { systemId: Number(systemId) } : {}),
           ...(robotId ? { robotId } : {}),
           ...(subsystemId ? { subsystemId } : {}),
           ...(methodId ? { manufacturingMethodId: Number(methodId) } : {}),
