@@ -125,7 +125,8 @@ function useVisibleTasks(tasks: Task[], me: string, activeView: ViewKey) {
         if (task.status === 'pending_review') return 0;
         if (task.status === 'processing' && task.reviewRejected) return 1;
         if (task.status === 'processing') return 2;
-        return 3;
+        if (task.status === 'post_processing') return 3;
+        return 4;
       };
       return priority(a.task) - priority(b.task) || a.index - b.index;
     })
