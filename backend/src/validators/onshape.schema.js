@@ -23,7 +23,7 @@ export const partThumbnailSchema = {
 
 // 逐件覆寫：由前端在預覽後可調整分類/加工方式/材料/後處理/數量
 const importItem = z.object({
-  rowKey: z.string().min(1).max(120),
+  rowKey: z.string().min(1).max(512),
   classification: z.enum(['made', 'cots', 'skip']).optional(),
   manufacturingMethodId: z.coerce.number().int().positive().nullable().optional(),
   materialId: z.coerce.number().int().positive().nullable().optional(),
