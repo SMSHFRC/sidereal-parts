@@ -33,7 +33,25 @@ const taskInclude = {
   creator: { select: { id: true, username: true } },
   assignee: { select: { id: true, username: true } },
   postProcessor: { select: { id: true, username: true } },
+  statusHistory: {
+    orderBy: { changedAt: 'desc' },
+    take: 1,
+    select: { fromStatus: true, toStatus: true },
+  },
 };
+
+function withTaskFlags(task) {
+  if (!task) return task;
+  const latestStatusChange = task.statusHistory?.[0];
+  const { statusHistory, ...publicTask } = task;
+  return {
+    ...publicTask,
+    reviewRejected:
+      task.status === TASK_STATUS.PROCESSING &&
+      latestStatusChange?.fromStatus === TASK_STATUS.PENDING_REVIEW &&
+      latestStatusChange?.toStatus === TASK_STATUS.PROCESSING,
+  };
+}
 
 // 確認使用者存在、啟用、且為 member 角色（assignee / postProcessor 共用）
 async function assertMember(userId, label) {
@@ -110,7 +128,7 @@ export const taskService = {
       return created;
     });
 
-    return task;
+    return withTaskFlags(task);
   },
 
   async list(query, actor) {
@@ -135,13 +153,13 @@ export const taskService = {
       }),
       prisma.task.count({ where }),
     ]);
-    return { items, page, limit, total };
+    return { items: items.map(withTaskFlags), page, limit, total };
   },
 
   async getById(id, actor) {
     const task = await prisma.task.findUnique({ where: { id }, include: taskInclude });
     if (!task) throw ApiError.notFound('任務不存在');
-    return task;
+    return withTaskFlags(task);
   },
 
   async update(id, data, actor) {
@@ -182,11 +200,11 @@ export const taskService = {
     // drawingUrl 有變動時，重新解析 Onshape 參照
     const osPatch = data.drawingUrl !== undefined ? onshapeFields(data.drawingUrl) : {};
 
-    return prisma.task.update({
+    return withTaskFlags(await prisma.task.update({
       where: { id },
       data: { ...data, ...osPatch, rewardPoints },
       include: taskInclude,
-    });
+    }));
   },
 
   async updateStatus(id, { status: nextStatus, note }, actor) {
@@ -356,7 +374,10 @@ export const taskService = {
         }
       }
 
-      return updated;
+      return withTaskFlags({
+        ...updated,
+        statusHistory: [{ fromStatus: task.status, toStatus: nextStatus }],
+      });
     });
   },
 
@@ -381,7 +402,7 @@ export const taskService = {
           note: '接單',
         },
       });
-      return tx.task.findUnique({ where: { id }, include: taskInclude });
+      return withTaskFlags(await tx.task.findUnique({ where: { id }, include: taskInclude }));
     });
   },
 
@@ -398,7 +419,7 @@ export const taskService = {
     if (r.count === 0) {
       throw ApiError.badRequest('此任務目前不可接後處理（已被接走或狀態不符）', 'CLAIM_FAILED');
     }
-    return prisma.task.findUnique({ where: { id }, include: taskInclude });
+    return withTaskFlags(await prisma.task.findUnique({ where: { id }, include: taskInclude }));
   },
 
   async remove(id, actor) {

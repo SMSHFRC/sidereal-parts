@@ -43,7 +43,7 @@ function Card({
       <Link to={`/tasks/${t.id}`} className="block active:bg-slate-50">
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-sm font-bold text-slate-900">{t.partNumber}</span>
-          <StatusBadge status={t.status} />
+          <StatusBadge status={t.status} reviewRejected={t.reviewRejected} />
         </div>
         {t.note && <p className="mt-1 truncate text-sm text-slate-600">{t.note}</p>}
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
@@ -117,7 +117,16 @@ function useVisibleTasks(tasks: Task[], me: string, activeView: ViewKey) {
     VIEWS.map((v) => [v.key, tasks.filter((t) => v.match(t, me)).length]),
   ) as Record<ViewKey, number>;
   const view = VIEWS.find((v) => v.key === activeView) ?? VIEWS[0];
-  return { counts, visible: tasks.filter((t) => view.match(t, me)) };
+  const visible = tasks
+    .filter((t) => view.match(t, me))
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => {
+      const aPendingReview = a.task.status === 'pending_review' ? 0 : 1;
+      const bPendingReview = b.task.status === 'pending_review' ? 0 : 1;
+      return aPendingReview - bPendingReview || a.index - b.index;
+    })
+    .map(({ task }) => task);
+  return { counts, visible };
 }
 
 export default function Board() {

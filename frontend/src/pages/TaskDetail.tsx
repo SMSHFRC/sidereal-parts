@@ -118,7 +118,7 @@ export default function TaskDetail() {
       <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           <h1 className="font-mono text-lg font-bold text-slate-900">{task.partNumber}</h1>
-          <StatusBadge status={task.status} />
+          <StatusBadge status={task.status} reviewRejected={task.reviewRejected} />
         </div>
 
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">

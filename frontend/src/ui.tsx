@@ -41,12 +41,21 @@ const STATUS_STYLE: Record<TaskStatus, string> = {
   cancelled: 'bg-slate-200 text-slate-600',
 };
 
-export function StatusBadge({ status }: { status: TaskStatus }) {
+export function StatusBadge({
+  status,
+  reviewRejected = false,
+}: {
+  status: TaskStatus;
+  reviewRejected?: boolean;
+}) {
+  const isReviewRejected = status === 'processing' && reviewRejected;
   return (
     <span
-      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[status]}`}
+      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+        isReviewRejected ? 'bg-rose-100 text-rose-800' : STATUS_STYLE[status]
+      }`}
     >
-      {STATUS_LABEL[status]}
+      {isReviewRejected ? '退件重做' : STATUS_LABEL[status]}
     </span>
   );
 }

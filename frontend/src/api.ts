@@ -69,6 +69,7 @@ export interface Task {
   dimensions: string | null;
   note: string | null;
   status: TaskStatus;
+  reviewRejected?: boolean;
   createdAt: string;
   updatedAt: string;
   system: Ref;

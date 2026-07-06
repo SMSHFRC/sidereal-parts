@@ -425,6 +425,7 @@ test('退回重做後：管理員不可送審/放棄，加工者可重新送審'
     .send({ status: 'processing' });
   assert.equal(back.status, 200);
   assert.equal(back.body.data.status, 'processing');
+  assert.equal(back.body.data.reviewRejected, true);
 
   // 管理員不能替加工者送審或放棄
   const adminSubmit = await api
