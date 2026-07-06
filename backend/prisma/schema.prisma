@@ -16,6 +16,7 @@ enum TaskStatus {
   accepted
   processing
   post_processing
+  pending_review
   completed
   rejected
   cancelled
@@ -134,11 +135,13 @@ model System {
 }
 
 model ManufacturingMethod {
-  id       Int     @id @default(autoincrement())
-  code     String  @unique
-  name     String
-  isActive Boolean @default(true) @map("is_active")
-  tasks    Task[]
+  id             Int     @id @default(autoincrement())
+  code           String  @unique
+  name           String
+  isActive       Boolean @default(true) @map("is_active")
+  basePoints     Int     @default(5) @map("base_points") // 每件基礎積分
+  requiresReview Boolean @default(false) @map("requires_review") // 完成需管理員驗收
+  tasks          Task[]
 
   @@map("manufacturing_methods")
 }

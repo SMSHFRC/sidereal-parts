@@ -422,12 +422,13 @@ export const onshapeService = {
     const postIds = [...new Set(madePlan.map((p) => p.itemPostProcessId).filter(Boolean))];
     const matIds = [...new Set(madePlan.map((p) => p.materialOverride).filter(Boolean))];
     const [methodRows, postRows, matRows] = await Promise.all([
-      prisma.manufacturingMethod.findMany({ where: { id: { in: methodIds } }, select: { id: true } }),
+      prisma.manufacturingMethod.findMany({ where: { id: { in: methodIds } }, select: { id: true, basePoints: true } }),
       postIds.length ? prisma.postProcess.findMany({ where: { id: { in: postIds } }, select: { id: true } }) : [],
       matIds.length ? prisma.material.findMany({ where: { id: { in: matIds } }, select: { id: true } }) : [],
     ]);
     const has = (rows, id) => rows.some((r) => r.id === id);
     for (const id of methodIds) if (!has(methodRows, id)) throw ApiError.badRequest('加工方式不存在');
+    const basePointsOf = (id) => methodRows.find((m) => m.id === id)?.basePoints ?? 5;
     for (const id of postIds) if (!has(postRows, id)) throw ApiError.badRequest('後處理方式不存在');
     for (const id of matIds) if (!has(matRows, id)) throw ApiError.badRequest('材料不存在');
 
@@ -462,7 +463,7 @@ export const onshapeService = {
         const item = plan.row;
         const quantity = plan.quantity;
         const resolvedMaterialId = await resolveMaterialId(tx, plan.materialOverride, item.material);
-        const rewardPoints = (5 + (plan.itemPostProcessId ? 2 : 0)) * quantity;
+        const rewardPoints = (basePointsOf(plan.methodId) + (plan.itemPostProcessId ? 2 : 0)) * quantity;
         const identity = {
           onshapeDid: preview.ref.did,
           onshapeEid: item.sourceElementId ?? preview.ref.eid,

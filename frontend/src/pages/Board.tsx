@@ -12,7 +12,7 @@ const COLS: { key: ColKey; title: string; match: (t: Task) => boolean }[] = [
   {
     key: 'doing',
     title: '進行中',
-    match: (t) => ['accepted', 'processing', 'post_processing'].includes(t.status),
+    match: (t) => ['accepted', 'processing', 'post_processing', 'pending_review'].includes(t.status),
   },
   {
     key: 'done',

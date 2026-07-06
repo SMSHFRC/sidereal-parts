@@ -14,6 +14,7 @@ export type TaskStatus =
   | 'accepted'
   | 'processing'
   | 'post_processing'
+  | 'pending_review'
   | 'completed'
   | 'rejected'
   | 'cancelled';
@@ -21,6 +22,10 @@ export type TaskStatus =
 export interface Ref {
   code: string;
   name: string;
+}
+export interface MethodRef extends Ref {
+  basePoints?: number;
+  requiresReview?: boolean;
 }
 export interface UserRef {
   id: string;
@@ -30,6 +35,10 @@ export interface UserRef {
 export interface OptionRef extends Ref {
   id: number;
 }
+export interface MethodOption extends OptionRef {
+  basePoints?: number;
+  requiresReview?: boolean;
+}
 export interface MasterDataItem extends OptionRef {
   isActive: boolean;
 }
@@ -37,7 +46,7 @@ export type MasterDataType = 'methods' | 'materials' | 'postProcesses';
 
 export interface MetaOptions {
   systems: OptionRef[];
-  methods: OptionRef[];
+  methods: MethodOption[];
   materials: OptionRef[];
   postProcesses: OptionRef[];
 }
@@ -63,7 +72,7 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   system: Ref;
-  manufacturingMethod: Ref;
+  manufacturingMethod: MethodRef;
   material: Ref | null;
   postProcess: Ref | null;
   creator: UserRef;
@@ -426,7 +435,8 @@ export async function fetchOnshapePartThumbnail(r: {
 export const TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   pending: ['accepted', 'cancelled'],
   accepted: ['processing', 'rejected', 'cancelled'],
-  processing: ['post_processing', 'completed', 'rejected', 'cancelled'],
+  processing: ['pending_review', 'post_processing', 'completed', 'rejected', 'cancelled'],
+  pending_review: ['completed', 'post_processing', 'processing', 'cancelled'],
   post_processing: ['completed', 'cancelled'],
   completed: [],
   rejected: [],
@@ -434,27 +444,48 @@ export const TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
 };
 
 /** 依目前使用者與任務狀態，回傳可執行的合法目標狀態（非法的直接不顯示）
- *  接單制：pending 未指派 = 任務池，member 按「接單」即認領並接受 */
+ *  接單制：pending 未指派 = 任務池，member 按「接單」即認領並接受
+ *  驗收制：需驗收的加工方式（requiresReview），加工中只能「送審」，
+ *          待驗收(pending_review)後由管理員核准/退回。 */
 export function allowedActions(task: Task, me: Me): TaskStatus[] {
   const hasPost = task.postProcessId != null;
+  const requiresReview = Boolean(task.manufacturingMethod.requiresReview);
   const isOpenPool = task.status === 'pending' && !task.assignee;
-  // 條件式限制：有後處理必經 post_processing；無後處理不可進 post_processing
+  const fromReview = task.status === 'pending_review';
   const nexts = TRANSITIONS[task.status].filter((s) => {
+    // 需驗收方式：加工中只能送審，不能直接完成或交後處理
+    if (task.status === 'processing' && requiresReview && (s === 'completed' || s === 'post_processing'))
+      return false;
+    if (s === 'pending_review') return requiresReview;
     if (s === 'post_processing') return hasPost;
     if (s === 'completed' && task.status === 'processing') return !hasPost;
-    // 任務池任務沒有「放棄」（還沒接就談不上放棄）；admin 也不能替人接單
+    if (s === 'completed' && fromReview) return !hasPost; // 有後處理則驗收後走 post_processing
     if (isOpenPool && s === 'accepted') return me.role === 'member';
     if (isOpenPool && s === 'rejected') return false;
     return true;
   });
   if (me.role === 'admin') return nexts;
+  // member：pending_review 的後續全部僅 admin
   return nexts.filter((s) => {
     if (s === 'cancelled') return task.creator.id === me.id;
     if (s === 'completed' && task.status === 'post_processing')
       return task.postProcessor?.id === me.id;
     if (s === 'accepted' && isOpenPool) return true; // 接單
+    if (fromReview) return false; // 待驗收中，member 只能等
     return task.assignee?.id === me.id;
   });
+}
+
+/** 依來源/目標狀態產生按鈕文字（同一目標在不同來源語意不同） */
+export function transitionLabel(from: TaskStatus, to: TaskStatus): string {
+  if (to === 'pending_review') return '送審驗收';
+  if (from === 'pending_review') {
+    if (to === 'completed') return '驗收通過（完成）';
+    if (to === 'post_processing') return '驗收通過，交後處理';
+    if (to === 'processing') return '退回重做';
+  }
+  if (to === 'accepted' && from === 'pending') return '接單';
+  return ACTION_LABEL[to];
 }
 
 /** 是否可接後處理（post_processing 且尚無後處理者，加工者皆可認領） */
@@ -469,6 +500,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   accepted: '已接受',
   processing: '加工中',
   post_processing: '後處理中',
+  pending_review: '待驗收',
   completed: '已完成',
   rejected: '已放棄',
   cancelled: '已取消',
@@ -480,6 +512,7 @@ export const ACTION_LABEL: Record<TaskStatus, string> = {
   rejected: '放棄回池',
   processing: '開始加工',
   post_processing: '加工完成，交後處理',
+  pending_review: '送審驗收',
   completed: '完成',
   cancelled: '取消任務',
 };

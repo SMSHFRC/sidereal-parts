@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  ACTION_LABEL,
   ApiError,
   allowedActions,
   canClaimPostProcess,
   fmtTime,
   taskApi,
+  transitionLabel,
   type Task,
   type TaskStatus,
 } from '../api';
@@ -18,19 +18,35 @@ const BTN_STYLE: Partial<Record<TaskStatus, string>> = {
   accepted: 'bg-sky-600 active:bg-sky-700',
   processing: 'bg-indigo-600 active:bg-indigo-700',
   post_processing: 'bg-purple-600 active:bg-purple-700',
+  pending_review: 'bg-orange-500 active:bg-orange-600',
   completed: 'bg-emerald-600 active:bg-emerald-700',
   rejected: 'bg-rose-600 active:bg-rose-700',
   cancelled: 'bg-slate-500 active:bg-slate-600',
 };
 
-const CONFIRM_TEXT: Partial<Record<TaskStatus, string>> = {
-  accepted: '確定接下這個任務？',
-  processing: '確定開始加工？',
-  post_processing: '確定加工完成並交付後處理？交棒後將發放加工積分。',
-  completed: '確定標記為完成？完成後將發放積分且無法復原。',
-  rejected: '確定放棄這個任務並釋放回任務池？',
-  cancelled: '確定取消這個任務？取消後無法復原。',
-};
+// 退回重做（pending_review -> processing）用警示色，與「開始加工」區隔
+const btnStyleFor = (task: Task, to: TaskStatus) =>
+  task.status === 'pending_review' && to === 'processing'
+    ? 'bg-rose-600 active:bg-rose-700'
+    : BTN_STYLE[to];
+
+function confirmFor(task: Task, to: TaskStatus, isOpenPool: boolean): string {
+  if (to === 'pending_review') return '送交管理員驗收？驗收通過後才算完成並發放積分。';
+  if (task.status === 'pending_review') {
+    if (to === 'completed') return '驗收通過並標記完成？將發放加工積分。';
+    if (to === 'post_processing') return '驗收通過並交付後處理？將發放加工積分。';
+    if (to === 'processing') return '退回給加工者重做？（不發積分）';
+  }
+  if (isOpenPool && to === 'accepted') return '確定接下這個任務？';
+  const base: Partial<Record<TaskStatus, string>> = {
+    processing: '確定開始加工？',
+    post_processing: '確定加工完成並交付後處理？交棒後將發放加工積分。',
+    completed: '確定標記為完成？完成後將發放積分且無法復原。',
+    rejected: '確定放棄這個任務並釋放回任務池？',
+    cancelled: '確定取消這個任務？取消後無法復原。',
+  };
+  return base[to] ?? '確定執行？';
+}
 
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
@@ -60,8 +76,7 @@ export default function TaskDetail() {
   const showClaimPost = canClaimPostProcess(task, user);
 
   const doAction = async (status: TaskStatus) => {
-    const confirmText = isOpenPool && status === 'accepted' ? '確定接下這個任務？' : CONFIRM_TEXT[status];
-    if (!window.confirm(confirmText ?? '確定執行？')) return;
+    if (!window.confirm(confirmFor(task, status, isOpenPool))) return;
     setActionError('');
     setBusy(status);
     try {
@@ -70,7 +85,8 @@ export default function TaskDetail() {
           ? await taskApi.claim(task.id)
           : await taskApi.updateStatus(task.id, status);
       setTask(updated);
-      if (status === 'completed') refreshMe().catch(() => {}); // 更新頂欄積分
+      // 完成或交棒後處理都會發積分 → 更新頂欄
+      if (status === 'completed' || status === 'post_processing') refreshMe().catch(() => {});
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : '操作失敗');
       load(); // 狀態可能已被他人變更，重新載入
@@ -162,12 +178,24 @@ export default function TaskDetail() {
               key={s}
               onClick={() => doAction(s)}
               disabled={busy !== null}
-              className={`min-h-12 rounded-xl text-base font-semibold text-white disabled:opacity-50 ${BTN_STYLE[s]}`}
+              className={`min-h-12 rounded-xl text-base font-semibold text-white disabled:opacity-50 ${btnStyleFor(task, s)}`}
             >
-              {busy === s ? '處理中…' : isOpenPool && s === 'accepted' ? '接單' : ACTION_LABEL[s]}
+              {busy === s ? '處理中…' : transitionLabel(task.status, s)}
             </button>
           ))}
         </div>
+      )}
+
+      {/* 提示：需驗收方式 / 待驗收中 */}
+      {task.status === 'processing' && task.manufacturingMethod.requiresReview && (
+        <p className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">
+          此加工方式（{task.manufacturingMethod.name}）需管理員驗收：加工完成後請按「送審驗收」。
+        </p>
+      )}
+      {task.status === 'pending_review' && user.role !== 'admin' && (
+        <p className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">
+          已送審，等待管理員驗收。
+        </p>
       )}
     </div>
   );

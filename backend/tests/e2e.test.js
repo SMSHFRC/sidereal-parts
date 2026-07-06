@@ -17,6 +17,9 @@ before(async () => {
   const res = await api.post('/api/v1/auth/login').send({ username: 'admin', password: 'Admin@12345' });
   assert.equal(res.status, 200, 'admin 應能登入');
   ctx.adminToken = res.body.data.accessToken;
+  // 方法 id 依 code 查（DB id 順序未必等於 seed 陣列順序）
+  const opts = await api.get('/api/v1/meta/options').set(auth(ctx.adminToken));
+  ctx.methodId = Object.fromEntries(opts.body.data.methods.map((m) => [m.code, m.id]));
 });
 
 after(async () => {
@@ -76,7 +79,7 @@ test('member 建立任務（進任務池）：編號格式 ARM-####、積分 (5+
     .set(auth(ctx.memberAToken))
     .send({
       systemId: 1,
-      manufacturingMethodId: 1,
+      manufacturingMethodId: ctx.methodId.MANUAL_MILL, // base 5、免驗收（走標準流程）
       quantity: 10,
       postProcessId: 1,
     });
@@ -93,7 +96,7 @@ test('第二個任務編號遞增 +1（並發計數器）', async () => {
   const res = await api
     .post('/api/v1/tasks')
     .set(auth(ctx.memberAToken))
-    .send({ systemId: 1, manufacturingMethodId: 1, quantity: 3 });
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId.MANUAL_MILL, quantity: 3 });
   assert.equal(res.status, 201);
   assert.equal(Number(res.body.data.partNumber.split('-')[1]), ctx.firstSeq + 1);
   assert.equal(res.body.data.rewardPoints, 15);
@@ -282,4 +285,94 @@ test('已完成任務不可刪除（TASK_LOCKED）', async () => {
   const res = await api.delete(`/api/v1/tasks/${ctx.taskId}`).set(auth(ctx.memberAToken));
   assert.equal(res.status, 400);
   assert.equal(res.body.error.code, 'TASK_LOCKED');
+});
+
+test('驗收制：CNC 任務需管理員驗收才完成並發積分', async () => {
+  const opts = await api.get('/api/v1/meta/options').set(auth(ctx.adminToken));
+  const cnc = opts.body.data.methods.find((m) => m.code === 'CNC');
+  assert.ok(cnc?.requiresReview, 'CNC 應需驗收');
+
+  const created = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: cnc.id, quantity: 2 });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.data.rewardPoints, 10); // 5 * 2
+  const taskId = created.body.data.id;
+
+  await api.post(`/api/v1/tasks/${taskId}/claim`).set(auth(ctx.memberCToken));
+  await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.memberCToken))
+    .send({ status: 'processing' });
+
+  // 直接完成被擋（需送審）
+  const direct = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.memberCToken))
+    .send({ status: 'completed' });
+  assert.equal(direct.status, 400);
+  assert.equal(direct.body.error.code, 'REVIEW_REQUIRED');
+
+  // 送審
+  const submit = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.memberCToken))
+    .send({ status: 'pending_review' });
+  assert.equal(submit.status, 200);
+  assert.equal(submit.body.data.status, 'pending_review');
+
+  // 加工者不能自己驗收
+  const selfApprove = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.memberCToken))
+    .send({ status: 'completed' });
+  assert.equal(selfApprove.status, 403);
+
+  const before = Number(
+    (await api.get('/api/v1/auth/me').set(auth(ctx.memberCToken))).body.data.totalPoints,
+  );
+  // admin 驗收通過 → 完成 + 發加工分
+  const approve = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.adminToken))
+    .send({ status: 'completed' });
+  assert.equal(approve.status, 200);
+  assert.equal(approve.body.data.status, 'completed');
+  const after = Number(
+    (await api.get('/api/v1/auth/me').set(auth(ctx.memberCToken))).body.data.totalPoints,
+  );
+  assert.equal(after - before, 10, '驗收通過後加工者得 10 分（5x2）');
+});
+
+test('3D 列印基礎積分為 1（免驗收，直接完成）', async () => {
+  const opts = await api.get('/api/v1/meta/options').set(auth(ctx.adminToken));
+  const tdp = opts.body.data.methods.find((m) => m.code === '3DP');
+  assert.equal(tdp.basePoints, 1);
+  assert.equal(tdp.requiresReview, false);
+
+  const created = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: tdp.id, quantity: 3 });
+  assert.equal(created.body.data.rewardPoints, 3); // 1 * 3
+  const taskId = created.body.data.id;
+
+  const before = Number(
+    (await api.get('/api/v1/auth/me').set(auth(ctx.memberAToken))).body.data.totalPoints,
+  );
+  await api.post(`/api/v1/tasks/${taskId}/claim`).set(auth(ctx.memberAToken));
+  await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.memberAToken))
+    .send({ status: 'processing' });
+  const done = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.memberAToken))
+    .send({ status: 'completed' });
+  assert.equal(done.status, 200);
+  const after = Number(
+    (await api.get('/api/v1/auth/me').set(auth(ctx.memberAToken))).body.data.totalPoints,
+  );
+  assert.equal(after - before, 3, '3DP 完成得 1 分/件 x3 = 3');
 });

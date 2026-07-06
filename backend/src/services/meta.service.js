@@ -4,6 +4,7 @@ import { ApiError } from '../utils/ApiError.js';
 const orderBy = { id: 'asc' };
 const active = { isActive: true };
 const select = { id: true, code: true, name: true };
+const methodSelect = { id: true, code: true, name: true, basePoints: true, requiresReview: true };
 const adminSelect = { id: true, code: true, name: true, isActive: true };
 
 const masterModels = {
@@ -31,7 +32,7 @@ export const metaService = {
   async options() {
     const [systems, methods, materials, postProcesses] = await Promise.all([
       prisma.system.findMany({ where: active, select, orderBy }),
-      prisma.manufacturingMethod.findMany({ where: active, select, orderBy }),
+      prisma.manufacturingMethod.findMany({ where: active, select: methodSelect, orderBy }),
       prisma.material.findMany({ where: active, select, orderBy }),
       prisma.postProcess.findMany({ where: active, select, orderBy }),
     ]);

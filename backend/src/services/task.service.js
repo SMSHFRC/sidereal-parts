@@ -16,17 +16,18 @@ const onshapeFields = (drawingUrl) => {
   };
 };
 
-// 積分規則：加工分 5/件、後處理分 2/件（拆帳發給不同角色）
-const MACHINING_POINTS_PER_UNIT = 5;
+// 積分規則：加工分 = 加工方式的 basePoints/件（CNC/車床 5、3D列印/雷切 1）；後處理分 2/件
 const POST_PROCESS_POINTS_PER_UNIT = 2;
 
-// 任務總積分（顯示用）= (5 + 有後處理?2:0) x 數量
-const calcRewardPoints = (quantity, hasPostProcess) =>
-  (MACHINING_POINTS_PER_UNIT + (hasPostProcess ? POST_PROCESS_POINTS_PER_UNIT : 0)) * quantity;
+// 任務總積分（顯示用）= (基礎分 + 有後處理?2:0) x 數量
+const calcRewardPoints = (basePoints, quantity, hasPostProcess) =>
+  (basePoints + (hasPostProcess ? POST_PROCESS_POINTS_PER_UNIT : 0)) * quantity;
 
 const taskInclude = {
   system: { select: { code: true, name: true } },
-  manufacturingMethod: { select: { code: true, name: true } },
+  manufacturingMethod: {
+    select: { code: true, name: true, basePoints: true, requiresReview: true },
+  },
   material: { select: { code: true, name: true } },
   postProcess: { select: { code: true, name: true } },
   creator: { select: { id: true, username: true } },
@@ -63,10 +64,14 @@ export const taskService = {
       throw ApiError.badRequest('未選擇後處理方式，不需指派後處理者');
     }
 
-    const system = await prisma.system.findUnique({ where: { id: data.systemId } });
+    const [system, method] = await Promise.all([
+      prisma.system.findUnique({ where: { id: data.systemId } }),
+      prisma.manufacturingMethod.findUnique({ where: { id: data.manufacturingMethodId } }),
+    ]);
     if (!system) throw ApiError.badRequest('系統不存在');
+    if (!method) throw ApiError.badRequest('加工方式不存在');
 
-    const rewardPoints = calcRewardPoints(data.quantity, Boolean(data.postProcessId));
+    const rewardPoints = calcRewardPoints(method.basePoints, data.quantity, Boolean(data.postProcessId));
 
     // 交易內取號 + 建任務 + 寫初始狀態歷史（並發安全）
     const task = await prisma.$transaction(async (tx) => {
@@ -168,7 +173,11 @@ export const taskService = {
     if (postProcessorId != null && postProcessId == null) {
       throw ApiError.badRequest('未選擇後處理方式，不需指派後處理者');
     }
-    const rewardPoints = calcRewardPoints(quantity, Boolean(postProcessId));
+    // 加工方式可能被改，重新取 basePoints 算積分
+    const methodId = data.manufacturingMethodId ?? task.manufacturingMethodId;
+    const method = await prisma.manufacturingMethod.findUnique({ where: { id: methodId } });
+    if (!method) throw ApiError.badRequest('加工方式不存在');
+    const rewardPoints = calcRewardPoints(method.basePoints, quantity, Boolean(postProcessId));
 
     // drawingUrl 有變動時，重新解析 Onshape 參照
     const osPatch = data.drawingUrl !== undefined ? onshapeFields(data.drawingUrl) : {};
@@ -182,10 +191,14 @@ export const taskService = {
 
   async updateStatus(id, { status: nextStatus, note }, actor) {
     return prisma.$transaction(async (tx) => {
-      const task = await tx.task.findUnique({ where: { id } });
+      const task = await tx.task.findUnique({
+        where: { id },
+        include: { manufacturingMethod: { select: { basePoints: true, requiresReview: true } } },
+      });
       if (!task) throw ApiError.notFound('任務不存在');
 
       const hasPost = task.postProcessId != null;
+      const requiresReview = Boolean(task.manufacturingMethod?.requiresReview);
 
       // 1) 狀態機合法性（結構）
       if (!isValidTransition(task.status, nextStatus)) {
@@ -200,13 +213,24 @@ export const taskService = {
       }
       if (
         nextStatus === TASK_STATUS.COMPLETED &&
-        task.status === TASK_STATUS.PROCESSING &&
+        [TASK_STATUS.PROCESSING, TASK_STATUS.PENDING_REVIEW].includes(task.status) &&
         hasPost
       ) {
         throw ApiError.badRequest(
           '此任務有後處理，需先交後處理並由後處理者完成',
           'POST_PROCESS_REQUIRED',
         );
+      }
+      // 1c) 驗收關卡：需驗收的加工方式，加工者不可從加工中直接完成/交後處理，須先送審
+      if (
+        requiresReview &&
+        task.status === TASK_STATUS.PROCESSING &&
+        [TASK_STATUS.COMPLETED, TASK_STATUS.POST_PROCESSING].includes(nextStatus)
+      ) {
+        throw ApiError.badRequest('此加工方式需管理員驗收，請先送審', 'REVIEW_REQUIRED');
+      }
+      if (nextStatus === TASK_STATUS.PENDING_REVIEW && !requiresReview) {
+        throw ApiError.badRequest('此加工方式不需送審驗收', 'NO_REVIEW');
       }
 
       // 2) 角色/擁有權
@@ -230,6 +254,7 @@ export const taskService = {
         !task.assigneeId &&
         actor.role === ROLES.MEMBER;
 
+      const fromReview = task.status === TASK_STATUS.PENDING_REVIEW;
       let allowed = isAdmin;
       if (!allowed) {
         switch (nextStatus) {
@@ -237,14 +262,23 @@ export const taskService = {
             allowed = isAssignee || claiming;
             break;
           case TASK_STATUS.REJECTED:
-          case TASK_STATUS.PROCESSING:
-          case TASK_STATUS.POST_PROCESSING:
             allowed = isAssignee;
             break;
+          case TASK_STATUS.PROCESSING:
+            // 加工者開始加工；退回重做（由 pending_review）僅限管理員
+            allowed = !fromReview && isAssignee;
+            break;
+          case TASK_STATUS.PENDING_REVIEW:
+            // 加工者送審
+            allowed = isAssignee;
+            break;
+          case TASK_STATUS.POST_PROCESSING:
+            // 加工者交後處理；驗收通過交後處理（由 pending_review）僅限管理員
+            allowed = !fromReview && isAssignee;
+            break;
           case TASK_STATUS.COMPLETED:
-            // 後處理階段由後處理者結案；無後處理由加工者結案
-            allowed =
-              task.status === TASK_STATUS.POST_PROCESSING ? isPostProcessor : isAssignee;
+            // 後處理階段由後處理者結案；pending_review 由管理員驗收；否則加工者結案
+            allowed = fromReview ? false : task.status === TASK_STATUS.POST_PROCESSING ? isPostProcessor : isAssignee;
             break;
           case TASK_STATUS.CANCELLED:
             allowed = isCreator;
@@ -301,7 +335,8 @@ export const taskService = {
       });
 
       // 3) 積分拆帳（唯一鍵 (task,user,reason) 防重複發放）
-      const machiningPts = MACHINING_POINTS_PER_UNIT * task.quantity;
+      // 加工分 = 加工方式 basePoints/件（驗收流程於管理員核准的那次轉換才會走到這裡）
+      const machiningPts = (task.manufacturingMethod?.basePoints ?? 5) * task.quantity;
       const postPts = POST_PROCESS_POINTS_PER_UNIT * task.quantity;
 
       // 加工者交棒後處理 -> 加工分入帳

@@ -5,12 +5,13 @@ import 'dotenv/config';
 const prisma = new PrismaClient();
 
 const methods = [
-  { code: 'CNC', name: 'CNC Router', isActive: true },
-  { code: 'LATHE', name: '車床', isActive: true },
-  { code: 'MANUAL_MILL', name: '手動銑床', isActive: true },
-  { code: 'LASER', name: '雷切機', isActive: true },
-  { code: 'CUTOFF', name: '切斷機', isActive: true },
-  { code: '3DP', name: '3D 列印', isActive: true },
+  // basePoints：每件基礎積分；requiresReview：完成需管理員驗收才發分
+  { code: 'CNC', name: 'CNC Router', isActive: true, basePoints: 5, requiresReview: true },
+  { code: 'LATHE', name: '車床', isActive: true, basePoints: 5, requiresReview: true },
+  { code: 'MANUAL_MILL', name: '手動銑床', isActive: true, basePoints: 5, requiresReview: false },
+  { code: 'LASER', name: '雷切機', isActive: true, basePoints: 1, requiresReview: false },
+  { code: 'CUTOFF', name: '切斷機', isActive: true, basePoints: 5, requiresReview: false },
+  { code: '3DP', name: '3D 列印', isActive: true, basePoints: 1, requiresReview: false },
 ];
 
 const materials = [

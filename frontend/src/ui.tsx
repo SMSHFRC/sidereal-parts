@@ -35,6 +35,7 @@ const STATUS_STYLE: Record<TaskStatus, string> = {
   accepted: 'bg-sky-100 text-sky-800',
   processing: 'bg-indigo-100 text-indigo-800',
   post_processing: 'bg-purple-100 text-purple-800',
+  pending_review: 'bg-orange-100 text-orange-800',
   completed: 'bg-emerald-100 text-emerald-800',
   rejected: 'bg-rose-100 text-rose-800',
   cancelled: 'bg-slate-200 text-slate-600',
