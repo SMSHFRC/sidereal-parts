@@ -1,5 +1,6 @@
 // M3：Onshape 整合 — 每人 OAuth 綁定 + API 代理
 // token 加密落地；access token 過期自動用 refresh token 換新（單次重試）。
+import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/prisma.js';
 import { env } from '../config/env.js';
@@ -193,6 +194,16 @@ export const classifyBomRow = (row, rootDid) => {
 const thumbnailPathFor = ({ did, wvm, wvmId, eid }) =>
   `/onshape/thumbnail?did=${did}&wvm=${wvm}&wvmId=${wvmId}&eid=${eid}`;
 
+// 每列的穩定識別碼（前端逐件覆寫用）。與陣列順序無關：
+// 有 partId 用 partId+config+element；否則用內容雜湊。preview 與 import 兩次呼叫會得到相同 key。
+const rowKeyFor = (row) => {
+  if (row.sourcePartId) {
+    return `p:${row.sourcePartId}:${row.sourceConfig ?? ''}:${row.sourceElementId ?? ''}`;
+  }
+  const basis = `${row.name ?? ''}|${row.partNumber ?? ''}|${row.description ?? ''}`;
+  return `h:${crypto.createHash('sha1').update(basis).digest('hex').slice(0, 12)}`;
+};
+
 async function resolveMaterialId(db, selectedMaterialId, materialName) {
   if (selectedMaterialId) return selectedMaterialId;
   if (!materialName) return null;
@@ -256,7 +267,10 @@ async function makeImportPreview(userId, url) {
     apiFetch(userId, `/documents/${ref.did}`),
     fetchAssemblyBomRows(userId, ref),
   ]);
-  const classified = rows.map((row) => classifyBomRow(row, ref.did));
+  const classified = rows.map((row) => {
+    const c = classifyBomRow(row, ref.did);
+    return { ...c, rowKey: rowKeyFor(c) };
+  });
   const made = classified.filter((row) => row.classification === 'made');
   const cots = classified.filter((row) => row.classification === 'cots');
   const unknown = classified.filter((row) => row.classification === 'unknown');
@@ -358,18 +372,64 @@ export const onshapeService = {
     return makeImportPreview(userId, url);
   },
 
-  async importBom(userId, { url, systemId, manufacturingMethodId, materialId, postProcessId }) {
+  async importBom(userId, { url, systemId, manufacturingMethodId, materialId, postProcessId, items }) {
     const preview = await makeImportPreview(userId, url);
-    const [system, method, postProcess, selectedMaterial] = await Promise.all([
-      prisma.system.findUnique({ where: { id: systemId } }),
-      prisma.manufacturingMethod.findUnique({ where: { id: manufacturingMethodId } }),
-      postProcessId ? prisma.postProcess.findUnique({ where: { id: postProcessId } }) : null,
-      materialId ? prisma.material.findUnique({ where: { id: materialId } }) : null,
-    ]);
+    const system = await prisma.system.findUnique({ where: { id: systemId } });
     if (!system) throw ApiError.badRequest('系統不存在');
-    if (!method) throw ApiError.badRequest('加工方式不存在');
-    if (postProcessId && !postProcess) throw ApiError.badRequest('後處理方式不存在');
-    if (materialId && !selectedMaterial) throw ApiError.badRequest('材料不存在');
+
+    // 逐件覆寫表（key = rowKey）；全域欄位作為未指定時的預設值
+    const overrides = new Map((items ?? []).map((it) => [it.rowKey, it]));
+    const allRows = [...preview.made, ...preview.cots, ...preview.unknown];
+
+    // 先決定每列最終分類與設定並驗證
+    const madePlan = [];
+    const cotsPlan = [];
+    const missingMethod = [];
+    for (const row of allRows) {
+      const ov = overrides.get(row.rowKey);
+      if (ov?.classification === 'skip') continue;
+      const cls = ov?.classification ?? row.classification;
+      if (cls === 'unknown') continue; // 未分類且未指定 → 略過（需人工判斷）
+      if (cls === 'cots') {
+        cotsPlan.push(row);
+        continue;
+      }
+      // made：加工方式逐件可帶，未帶則用全域預設
+      const methodId = ov?.manufacturingMethodId ?? manufacturingMethodId ?? null;
+      if (!methodId) {
+        missingMethod.push(row.name ?? row.partNumber ?? '未命名零件');
+        continue;
+      }
+      madePlan.push({
+        row,
+        methodId,
+        materialOverride: ov?.materialId ?? materialId ?? null,
+        itemPostProcessId: ov?.postProcessId ?? postProcessId ?? null,
+        quantity: Math.max(1, Number(ov?.quantity ?? row.quantity) || 1),
+      });
+    }
+
+    if (missingMethod.length) {
+      const preview5 = missingMethod.slice(0, 5).join('、');
+      throw ApiError.badRequest(
+        `有 ${missingMethod.length} 個自製件未選加工方式：${preview5}${missingMethod.length > 5 ? '…' : ''}`,
+        'MISSING_METHOD',
+      );
+    }
+
+    // 驗證用到的 id 存在（一次查詢）
+    const methodIds = [...new Set(madePlan.map((p) => p.methodId))];
+    const postIds = [...new Set(madePlan.map((p) => p.itemPostProcessId).filter(Boolean))];
+    const matIds = [...new Set(madePlan.map((p) => p.materialOverride).filter(Boolean))];
+    const [methodRows, postRows, matRows] = await Promise.all([
+      prisma.manufacturingMethod.findMany({ where: { id: { in: methodIds } }, select: { id: true } }),
+      postIds.length ? prisma.postProcess.findMany({ where: { id: { in: postIds } }, select: { id: true } }) : [],
+      matIds.length ? prisma.material.findMany({ where: { id: { in: matIds } }, select: { id: true } }) : [],
+    ]);
+    const has = (rows, id) => rows.some((r) => r.id === id);
+    for (const id of methodIds) if (!has(methodRows, id)) throw ApiError.badRequest('加工方式不存在');
+    for (const id of postIds) if (!has(postRows, id)) throw ApiError.badRequest('後處理方式不存在');
+    for (const id of matIds) if (!has(matRows, id)) throw ApiError.badRequest('材料不存在');
 
     const thumbnailUrl = preview.thumbnailPath;
     const imageMeta = thumbnailUrl
@@ -398,10 +458,11 @@ export const onshapeService = {
       const created = [];
       const updated = [];
 
-      for (const item of preview.made) {
-        const quantity = Math.max(1, Number(item.quantity) || 1);
-        const resolvedMaterialId = await resolveMaterialId(tx, materialId, item.material);
-        const rewardPoints = (5 + (postProcessId ? 2 : 0)) * quantity;
+      for (const plan of madePlan) {
+        const item = plan.row;
+        const quantity = plan.quantity;
+        const resolvedMaterialId = await resolveMaterialId(tx, plan.materialOverride, item.material);
+        const rewardPoints = (5 + (plan.itemPostProcessId ? 2 : 0)) * quantity;
         const identity = {
           onshapeDid: preview.ref.did,
           onshapeEid: item.sourceElementId ?? preview.ref.eid,
@@ -410,10 +471,10 @@ export const onshapeService = {
         };
         const existing = await tx.task.findFirst({ where: identity });
         const taskData = {
-          manufacturingMethodId,
+          manufacturingMethodId: plan.methodId,
           systemId,
           materialId: resolvedMaterialId,
-          postProcessId: postProcessId ?? null,
+          postProcessId: plan.itemPostProcessId ?? null,
           quantity,
           rewardPoints,
           drawingUrl: url,
@@ -483,9 +544,9 @@ export const onshapeService = {
         }
       }
 
-      if (preview.cots.length) {
+      if (cotsPlan.length) {
         await tx.cotsItem.createMany({
-          data: preview.cots.map((item) => ({
+          data: cotsPlan.map((item) => ({
             batchId: batch.id,
             name: item.name,
             partNumber: item.partNumber,
@@ -506,11 +567,11 @@ export const onshapeService = {
       batchId: result.batch.id,
       created: result.created.length,
       updated: result.updated.length,
-      cotsCount: preview.cots.length,
+      cotsCount: cotsPlan.length,
       imageCount: preview.summary.imageCount,
       imageFailedCount: preview.summary.imageFailedCount,
       tasks: [...result.created, ...result.updated],
-      cots: preview.cots,
+      cots: cotsPlan,
       documentName: preview.documentName,
     };
   },

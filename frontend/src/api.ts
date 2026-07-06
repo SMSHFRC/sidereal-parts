@@ -110,6 +110,7 @@ export interface OnshapePart {
 }
 
 export interface OnshapeBomItem {
+  rowKey: string;
   name: string | null;
   quantity: number;
   material: string | null;
@@ -121,6 +122,16 @@ export interface OnshapeBomItem {
   classification: 'made' | 'cots' | 'unknown';
   classificationReason: string | null;
   cotsReason: string | null;
+}
+
+// 匯入時逐件覆寫（前端在預覽後編輯）
+export interface OnshapeImportItem {
+  rowKey: string;
+  classification?: 'made' | 'cots' | 'skip';
+  manufacturingMethodId?: number | null;
+  materialId?: number | null;
+  postProcessId?: number | null;
+  quantity?: number;
 }
 
 export interface OnshapeImportPreview {
@@ -365,9 +376,10 @@ export const onshapeApi = {
   importBom: (input: {
     url: string;
     systemId: number;
-    manufacturingMethodId: number;
+    manufacturingMethodId?: number; // 全域預設（逐件未指定時採用）
     materialId?: number;
     postProcessId?: number;
+    items?: OnshapeImportItem[]; // 逐件覆寫
   }) =>
     api<OnshapeImportResult>('/onshape/import', {
       method: 'POST',

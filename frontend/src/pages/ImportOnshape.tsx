@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ApiError,
@@ -10,6 +10,8 @@ import {
   metaApi,
   onshapeApi,
   toSelectOptions,
+  type OnshapeBomItem,
+  type OnshapeImportItem,
   type OnshapeImportPreview,
   type OnshapeImportResult,
 } from '../api';
@@ -17,40 +19,12 @@ import { ErrorBox, Spinner } from '../ui';
 
 const inputCls =
   'mt-1 w-full min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-base outline-none focus:border-slate-900';
+const cellCls =
+  'w-full min-h-9 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-slate-900';
 
 type SelectOption = { id: number; label: string };
-
-function BomList({ title, items }: { title: string; items: OnshapeImportPreview['made'] }) {
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-3">
-      <h2 className="text-sm font-semibold text-slate-900">
-        {title} <span className="text-slate-500">({items.length})</span>
-      </h2>
-      {items.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-400">沒有項目</p>
-      ) : (
-        <div className="mt-2 max-h-72 divide-y divide-slate-100 overflow-auto">
-          {items.map((item, idx) => (
-            <div key={`${item.sourcePartId ?? item.partNumber ?? idx}`} className="py-2">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-medium text-slate-900">{item.name ?? '未命名零件'}</p>
-                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                  x{item.quantity || 0}
-                </span>
-              </div>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {item.partNumber ?? '無料號'} · {item.material ?? '無材料'}
-              </p>
-              {item.cotsReason && (
-                <p className="mt-0.5 text-xs text-amber-700">分流原因：{item.cotsReason}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
+type Cls = 'made' | 'cots' | 'skip';
+type Edit = { classification: Cls; methodId: string; materialId: string; postProcessId: string; quantity: string };
 
 export default function ImportOnshape() {
   const [systems, setSystems] = useState<SelectOption[]>(FALLBACK_SYSTEM_OPTIONS);
@@ -59,10 +33,11 @@ export default function ImportOnshape() {
   const [postProcesses, setPostProcesses] = useState<SelectOption[]>(FALLBACK_POST_PROCESS_OPTIONS);
   const [url, setUrl] = useState('');
   const [systemId, setSystemId] = useState('');
-  const [methodId, setMethodId] = useState('');
+  const [methodId, setMethodId] = useState(''); // 全域「預設加工方式」
   const [materialId, setMaterialId] = useState('');
   const [postProcessId, setPostProcessId] = useState('');
   const [preview, setPreview] = useState<OnshapeImportPreview | null>(null);
+  const [edits, setEdits] = useState<Record<string, Edit>>({});
   const [thumb, setThumb] = useState<string | null>(null);
   const [result, setResult] = useState<OnshapeImportResult | null>(null);
   const [busy, setBusy] = useState<'preview' | 'import' | null>(null);
@@ -79,6 +54,28 @@ export default function ImportOnshape() {
       })
       .catch(() => {});
   }, []);
+
+  // 所有 BOM 列（合併三類，逐件可編輯）
+  const allRows: OnshapeBomItem[] = useMemo(
+    () => (preview ? [...preview.made, ...preview.cots, ...preview.unknown] : []),
+    [preview],
+  );
+
+  // 預覽載入後初始化每列編輯狀態
+  useEffect(() => {
+    if (!preview) return;
+    const init: Record<string, Edit> = {};
+    for (const row of allRows) {
+      init[row.rowKey] = {
+        classification: row.classification === 'unknown' ? 'made' : row.classification,
+        methodId: '',
+        materialId: '',
+        postProcessId: '',
+        quantity: String(row.quantity || 1),
+      };
+    }
+    setEdits(init);
+  }, [preview, allRows]);
 
   useEffect(() => {
     if (!preview?.ref.eid) return;
@@ -101,6 +98,13 @@ export default function ImportOnshape() {
     };
   }, [preview]);
 
+  const setEdit = (rowKey: string, patch: Partial<Edit>) =>
+    setEdits((prev) => ({ ...prev, [rowKey]: { ...prev[rowKey], ...patch } }));
+
+  const liveMade = allRows.filter((r) => edits[r.rowKey]?.classification === 'made');
+  const liveCots = allRows.filter((r) => edits[r.rowKey]?.classification === 'cots');
+  const liveSkip = allRows.filter((r) => edits[r.rowKey]?.classification === 'skip');
+
   const previewBom = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -119,11 +123,35 @@ export default function ImportOnshape() {
 
   const importBom = async () => {
     if (!preview) return;
-    if (!systemId || !methodId) {
-      setError('請先選擇系統與加工方式');
+    if (!systemId) {
+      setError('請選擇系統');
       return;
     }
-    if (!window.confirm(`確定匯入 ${preview.summary.madeCount} 筆自製件成任務？`)) return;
+    if (liveMade.length === 0) {
+      setError('沒有自製件可匯入');
+      return;
+    }
+    // 每個自製件都要有加工方式（逐件或全域預設）
+    const noMethod = liveMade.filter((r) => !(edits[r.rowKey].methodId || methodId));
+    if (noMethod.length > 0) {
+      setError(`有 ${noMethod.length} 個自製件未選加工方式（設全域預設，或逐件選擇）`);
+      return;
+    }
+    if (!window.confirm(`確定匯入 ${liveMade.length} 筆自製件成任務？COTS ${liveCots.length} 筆僅記錄。`)) return;
+
+    const items: OnshapeImportItem[] = allRows.map((row) => {
+      const e = edits[row.rowKey];
+      if (e.classification !== 'made') return { rowKey: row.rowKey, classification: e.classification };
+      return {
+        rowKey: row.rowKey,
+        classification: 'made',
+        manufacturingMethodId: Number(e.methodId || methodId),
+        materialId: e.materialId ? Number(e.materialId) : null, // null = 依 BOM 材料自動對應
+        postProcessId: e.postProcessId ? Number(e.postProcessId) : null,
+        quantity: Number(e.quantity) || 1,
+      };
+    });
+
     setError('');
     setBusy('import');
     try {
@@ -131,9 +159,8 @@ export default function ImportOnshape() {
         await onshapeApi.importBom({
           url: url.trim(),
           systemId: Number(systemId),
-          manufacturingMethodId: Number(methodId),
-          ...(materialId ? { materialId: Number(materialId) } : {}),
-          ...(postProcessId ? { postProcessId: Number(postProcessId) } : {}),
+          ...(methodId ? { manufacturingMethodId: Number(methodId) } : {}),
+          items,
         }),
       );
     } catch (err) {
@@ -142,6 +169,11 @@ export default function ImportOnshape() {
       setBusy(null);
     }
   };
+
+  const clsBtn = (active: boolean, color: string) =>
+    `min-h-8 flex-1 rounded-md px-2 text-xs font-semibold ${
+      active ? color : 'bg-slate-100 text-slate-500'
+    }`;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -173,9 +205,9 @@ export default function ImportOnshape() {
             </select>
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            加工方式 *
+            預設加工方式
             <select value={methodId} onChange={(e) => setMethodId(e.target.value)} className={inputCls}>
-              <option value="">請選擇</option>
+              <option value="">逐件選</option>
               {methods.map((o) => (
                 <option key={o.id} value={o.id}>{o.label}</option>
               ))}
@@ -191,7 +223,7 @@ export default function ImportOnshape() {
             </select>
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            後處理
+            預設後處理
             <select value={postProcessId} onChange={(e) => setPostProcessId(e.target.value)} className={inputCls}>
               <option value="">無</option>
               {postProcesses.map((o) => (
@@ -200,10 +232,13 @@ export default function ImportOnshape() {
             </select>
           </label>
         </div>
+        <p className="mt-2 text-xs text-slate-400">
+          預設值會套用到未逐件指定的項目；預覽後可逐件覆寫分類、加工方式、材料、後處理、數量。
+        </p>
         <button
           type="submit"
           disabled={busy !== null}
-          className="mt-4 min-h-11 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white active:bg-slate-700 disabled:opacity-50"
+          className="mt-3 min-h-11 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white active:bg-slate-700 disabled:opacity-50"
         >
           {busy === 'preview' ? '讀取 BOM 中…' : '預覽 BOM'}
         </button>
@@ -220,18 +255,16 @@ export default function ImportOnshape() {
               <div>
                 <h2 className="font-semibold text-slate-900">{preview.documentName}</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  自製件 {preview.summary.madeCount} · COTS {preview.summary.cotsCount} · 總列數 {preview.summary.total}
+                  自製 {liveMade.length} · COTS {liveCots.length} · 略過 {liveSkip.length} · 總列 {allRows.length}
                 </p>
-                <p className="mt-1 text-sm text-amber-700">
-                  Needs review: {preview.summary.unknownCount ?? preview.unknown?.length ?? 0}
-                </p>
+                <p className="mt-0.5 text-xs text-slate-400">可逐件調整下方分類與設定後再匯入</p>
               </div>
               <button
                 onClick={importBom}
-                disabled={busy !== null || preview.summary.madeCount === 0}
+                disabled={busy !== null || liveMade.length === 0}
                 className="md:ml-auto min-h-11 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white active:bg-emerald-700 disabled:opacity-50"
               >
-                {busy === 'import' ? '匯入中…' : '匯入成任務'}
+                {busy === 'import' ? '匯入中…' : `匯入 ${liveMade.length} 筆自製件`}
               </button>
             </div>
           </section>
@@ -256,13 +289,83 @@ export default function ImportOnshape() {
             </section>
           )}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <BomList title="自製件，將建立任務" items={preview.made} />
-            <BomList title="COTS / 採購件，僅記錄" items={preview.cots} />
-            {(preview.unknown?.length ?? 0) > 0 && (
-              <BomList title="Needs review / unknown" items={preview.unknown} />
-            )}
-          </div>
+          {/* 逐件編輯清單 */}
+          <section className="space-y-2">
+            {allRows.map((row) => {
+              const e = edits[row.rowKey];
+              if (!e) return null;
+              const isMade = e.classification === 'made';
+              const border =
+                e.classification === 'made'
+                  ? 'border-l-slate-900'
+                  : e.classification === 'cots'
+                    ? 'border-l-amber-500'
+                    : 'border-l-slate-300';
+              return (
+                <div
+                  key={row.rowKey}
+                  className={`rounded-lg border border-slate-200 border-l-4 ${border} bg-white p-3`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{row.name ?? '未命名零件'}</p>
+                      <p className="text-xs text-slate-500">
+                        {row.partNumber ?? '無料號'} · BOM 材料：{row.material ?? '無'}
+                        {row.classificationReason ? ` · 判定：${row.classificationReason}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex w-40 shrink-0 gap-1">
+                      <button onClick={() => setEdit(row.rowKey, { classification: 'made' })} className={clsBtn(e.classification === 'made', 'bg-slate-900 text-white')}>自製</button>
+                      <button onClick={() => setEdit(row.rowKey, { classification: 'cots' })} className={clsBtn(e.classification === 'cots', 'bg-amber-500 text-white')}>COTS</button>
+                      <button onClick={() => setEdit(row.rowKey, { classification: 'skip' })} className={clsBtn(e.classification === 'skip', 'bg-slate-400 text-white')}>略過</button>
+                    </div>
+                  </div>
+
+                  {isMade && (
+                    <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+                      <label className="text-[11px] text-slate-500">
+                        加工方式
+                        <select value={e.methodId} onChange={(ev) => setEdit(row.rowKey, { methodId: ev.target.value })} className={cellCls}>
+                          <option value="">{methodId ? '（用預設）' : '選擇'}</option>
+                          {methods.map((o) => (
+                            <option key={o.id} value={o.id}>{o.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-[11px] text-slate-500">
+                        材料
+                        <select value={e.materialId} onChange={(ev) => setEdit(row.rowKey, { materialId: ev.target.value })} className={cellCls}>
+                          <option value="">依 BOM</option>
+                          {materials.map((o) => (
+                            <option key={o.id} value={o.id}>{o.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-[11px] text-slate-500">
+                        後處理
+                        <select value={e.postProcessId} onChange={(ev) => setEdit(row.rowKey, { postProcessId: ev.target.value })} className={cellCls}>
+                          <option value="">無</option>
+                          {postProcesses.map((o) => (
+                            <option key={o.id} value={o.id}>{o.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-[11px] text-slate-500">
+                        數量
+                        <input
+                          type="number"
+                          min={1}
+                          value={e.quantity}
+                          onChange={(ev) => setEdit(row.rowKey, { quantity: ev.target.value })}
+                          className={cellCls}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </section>
         </div>
       )}
     </div>
