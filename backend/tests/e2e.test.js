@@ -376,3 +376,72 @@ test('3D 列印基礎積分為 1（免驗收，直接完成）', async () => {
   );
   assert.equal(after - before, 3, '3DP 完成得 1 分/件 x3 = 3');
 });
+
+test('管理員不能替加工者標記完成（免驗收任務）', async () => {
+  const opts = await api.get('/api/v1/meta/options').set(auth(ctx.adminToken));
+  const manual = opts.body.data.methods.find((m) => m.code === 'MANUAL_MILL'); // 免驗收
+  const created = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: manual.id, quantity: 1 });
+  const taskId = created.body.data.id;
+  await api.post(`/api/v1/tasks/${taskId}/claim`).set(auth(ctx.memberBToken));
+  await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.memberBToken))
+    .send({ status: 'processing' });
+
+  // 管理員不能直接標記完成
+  const adminDone = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.adminToken))
+    .send({ status: 'completed' });
+  assert.equal(adminDone.status, 403);
+
+  // 加工者可以完成
+  const done = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.memberBToken))
+    .send({ status: 'completed' });
+  assert.equal(done.status, 200);
+});
+
+test('退回重做後：管理員不可送審/放棄，加工者可重新送審', async () => {
+  const opts = await api.get('/api/v1/meta/options').set(auth(ctx.adminToken));
+  const cnc = opts.body.data.methods.find((m) => m.code === 'CNC');
+  const created = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: cnc.id, quantity: 1 });
+  const taskId = created.body.data.id;
+  await api.post(`/api/v1/tasks/${taskId}/claim`).set(auth(ctx.memberBToken));
+  await api.patch(`/api/v1/tasks/${taskId}/status`).set(auth(ctx.memberBToken)).send({ status: 'processing' });
+  await api.patch(`/api/v1/tasks/${taskId}/status`).set(auth(ctx.memberBToken)).send({ status: 'pending_review' });
+
+  // 管理員退回重做
+  const back = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.adminToken))
+    .send({ status: 'processing' });
+  assert.equal(back.status, 200);
+  assert.equal(back.body.data.status, 'processing');
+
+  // 管理員不能替加工者送審或放棄
+  const adminSubmit = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.adminToken))
+    .send({ status: 'pending_review' });
+  assert.equal(adminSubmit.status, 403);
+  const adminReject = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.adminToken))
+    .send({ status: 'rejected' });
+  assert.equal(adminReject.status, 403);
+
+  // 加工者可重新送審
+  const resubmit = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(ctx.memberBToken))
+    .send({ status: 'pending_review' });
+  assert.equal(resubmit.status, 200);
+});

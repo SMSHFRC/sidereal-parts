@@ -254,38 +254,39 @@ export const taskService = {
         !task.assigneeId &&
         actor.role === ROLES.MEMBER;
 
+      // 每種轉換只屬於特定角色。管理員只負責「驗收決定（由 pending_review）」與「取消」，
+      // 其餘工作流程動作（接單/開始加工/送審/放棄/完成/交後處理）都由對應的加工者/後處理者執行。
       const fromReview = task.status === TASK_STATUS.PENDING_REVIEW;
-      let allowed = isAdmin;
-      if (!allowed) {
-        switch (nextStatus) {
-          case TASK_STATUS.ACCEPTED:
-            allowed = isAssignee || claiming;
-            break;
-          case TASK_STATUS.REJECTED:
-            allowed = isAssignee;
-            break;
-          case TASK_STATUS.PROCESSING:
-            // 加工者開始加工；退回重做（由 pending_review）僅限管理員
-            allowed = !fromReview && isAssignee;
-            break;
-          case TASK_STATUS.PENDING_REVIEW:
-            // 加工者送審
-            allowed = isAssignee;
-            break;
-          case TASK_STATUS.POST_PROCESSING:
-            // 加工者交後處理；驗收通過交後處理（由 pending_review）僅限管理員
-            allowed = !fromReview && isAssignee;
-            break;
-          case TASK_STATUS.COMPLETED:
-            // 後處理階段由後處理者結案；pending_review 由管理員驗收；否則加工者結案
-            allowed = fromReview ? false : task.status === TASK_STATUS.POST_PROCESSING ? isPostProcessor : isAssignee;
-            break;
-          case TASK_STATUS.CANCELLED:
-            allowed = isCreator;
-            break;
-          default:
-            allowed = false;
-        }
+      let allowed;
+      switch (nextStatus) {
+        case TASK_STATUS.ACCEPTED:
+          allowed = isAssignee || claiming;
+          break;
+        case TASK_STATUS.REJECTED:
+          allowed = isAssignee; // 放棄回池
+          break;
+        case TASK_STATUS.PENDING_REVIEW:
+          allowed = isAssignee; // 送審
+          break;
+        case TASK_STATUS.PROCESSING:
+          // 開始加工（加工者）；退回重做（管理員，由 pending_review）
+          allowed = fromReview ? isAdmin : isAssignee;
+          break;
+        case TASK_STATUS.POST_PROCESSING:
+          // 交後處理（加工者）；驗收通過交後處理（管理員，由 pending_review）
+          allowed = fromReview ? isAdmin : isAssignee;
+          break;
+        case TASK_STATUS.COMPLETED:
+          // 後處理階段由後處理者結案；pending_review 由管理員驗收；否則加工者結案
+          if (task.status === TASK_STATUS.POST_PROCESSING) allowed = isPostProcessor;
+          else if (fromReview) allowed = isAdmin;
+          else allowed = isAssignee;
+          break;
+        case TASK_STATUS.CANCELLED:
+          allowed = isCreator || isAdmin;
+          break;
+        default:
+          allowed = false;
       }
       if (!allowed) throw ApiError.forbidden('無權執行此狀態變更', 'STATUS_FORBIDDEN');
 

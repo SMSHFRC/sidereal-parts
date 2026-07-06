@@ -452,27 +452,45 @@ export function allowedActions(task: Task, me: Me): TaskStatus[] {
   const requiresReview = Boolean(task.manufacturingMethod.requiresReview);
   const isOpenPool = task.status === 'pending' && !task.assignee;
   const fromReview = task.status === 'pending_review';
+  const isAdmin = me.role === 'admin';
+  const isAssignee = task.assignee?.id === me.id;
+  const isCreator = task.creator.id === me.id;
+  const isPostProcessor = task.postProcessor?.id === me.id;
+
+  // 結構性可行的轉換（與後端狀態機一致）
   const nexts = TRANSITIONS[task.status].filter((s) => {
-    // 需驗收方式：加工中只能送審，不能直接完成或交後處理
     if (task.status === 'processing' && requiresReview && (s === 'completed' || s === 'post_processing'))
       return false;
     if (s === 'pending_review') return requiresReview;
     if (s === 'post_processing') return hasPost;
     if (s === 'completed' && task.status === 'processing') return !hasPost;
     if (s === 'completed' && fromReview) return !hasPost; // 有後處理則驗收後走 post_processing
-    if (isOpenPool && s === 'accepted') return me.role === 'member';
     if (isOpenPool && s === 'rejected') return false;
     return true;
   });
-  if (me.role === 'admin') return nexts;
-  // member：pending_review 的後續全部僅 admin
+
+  // 逐動作對應角色（管理員只做「驗收決定」與「取消」）
   return nexts.filter((s) => {
-    if (s === 'cancelled') return task.creator.id === me.id;
-    if (s === 'completed' && task.status === 'post_processing')
-      return task.postProcessor?.id === me.id;
-    if (s === 'accepted' && isOpenPool) return true; // 接單
-    if (fromReview) return false; // 待驗收中，member 只能等
-    return task.assignee?.id === me.id;
+    switch (s) {
+      case 'accepted':
+        return isOpenPool && me.role === 'member'; // 接單
+      case 'rejected':
+        return isAssignee; // 放棄回池
+      case 'pending_review':
+        return isAssignee; // 送審
+      case 'processing':
+        return fromReview ? isAdmin : isAssignee; // 退回重做(admin) / 開始加工(assignee)
+      case 'post_processing':
+        return fromReview ? isAdmin : isAssignee;
+      case 'completed':
+        if (task.status === 'post_processing') return isPostProcessor;
+        if (fromReview) return isAdmin; // 驗收通過
+        return isAssignee; // 免驗收直接完成
+      case 'cancelled':
+        return isCreator || isAdmin;
+      default:
+        return false;
+    }
   });
 }
 
