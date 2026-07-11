@@ -57,6 +57,7 @@ app.use(
       return cb(new ApiError(403, 'CORS 來源不被允許', 'CORS_FORBIDDEN'));
     },
     credentials: true,
+    exposedHeaders: ['Content-Disposition'],
   }),
 );
 

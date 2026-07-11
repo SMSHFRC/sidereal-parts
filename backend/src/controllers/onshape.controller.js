@@ -73,8 +73,12 @@ export const onshapeController = {
 
   downloadTaskFile: asyncHandler(async (req, res) => {
     const file = await onshapeService.downloadTaskFile(req.user.id, req.params.id, req.user);
+    const asciiFilename = file.filename.replace(/[^\x20-\x7E]/g, '_');
     res.set('Content-Type', file.contentType);
-    res.set('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.set(
+      'Content-Disposition',
+      `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
+    );
     res.set('Cache-Control', 'private, no-store');
     res.send(file.buf);
   }),

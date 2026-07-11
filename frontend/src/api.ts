@@ -118,6 +118,16 @@ export function getTaskDownloadSpec(task: Task): TaskDownloadSpec | null {
   return null;
 }
 
+export function getTaskDownloadFilename(task: Task, spec: TaskDownloadSpec): string {
+  const sourceLine = task.note?.split('\n').find((line) => line.startsWith('Onshape: '));
+  const originalName = sourceLine?.slice('Onshape: '.length).trim() || task.partNumber;
+  const base = originalName
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_')
+    .replace(new RegExp(`\\.${spec.format}$`, 'i'), '')
+    .trim();
+  return `${base || task.partNumber}.${spec.format}`;
+}
+
 export interface RobotRef {
   id: string;
   code: string;
@@ -431,7 +441,11 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   return json.data as T;
 }
 
-async function downloadFile(path: string, retry = true): Promise<{ blob: Blob; filename: string }> {
+async function downloadFile(
+  path: string,
+  fallbackFilename: string,
+  retry = true,
+): Promise<{ blob: Blob; filename: string }> {
   let res: Response;
   try {
     res = await raw(path);
@@ -439,7 +453,7 @@ async function downloadFile(path: string, retry = true): Promise<{ blob: Blob; f
     throw new ApiError(0, 'NETWORK', '無法連線到伺服器');
   }
 
-  if (res.status === 401 && retry && (await tryRefresh())) return downloadFile(path, false);
+  if (res.status === 401 && retry && (await tryRefresh())) return downloadFile(path, fallbackFilename, false);
   if (!res.ok) {
     const payload = await res.json().catch(() => null);
     const error = payload?.error;
@@ -447,7 +461,10 @@ async function downloadFile(path: string, retry = true): Promise<{ blob: Blob; f
   }
 
   const disposition = res.headers.get('content-disposition') ?? '';
-  const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? 'onshape-export';
+  const encodedFilename = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const filename = encodedFilename
+    ? decodeURIComponent(encodedFilename)
+    : /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? fallbackFilename;
   return { blob: await res.blob(), filename };
 }
 
@@ -489,7 +506,8 @@ export const taskApi = {
     api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   claimPostProcess: (id: string) =>
     api<Task>(`/tasks/${id}/claim-post-process`, { method: 'POST' }),
-  downloadFile: (id: string) => downloadFile(`/tasks/${id}/download`),
+  downloadFile: (id: string, fallbackFilename: string) =>
+    downloadFile(`/tasks/${id}/download`, fallbackFilename),
 };
 
 export const robotApi = {

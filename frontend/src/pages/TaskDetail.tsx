@@ -5,6 +5,7 @@ import {
   allowedActions,
   canClaimPostProcess,
   fmtTime,
+  getTaskDownloadFilename,
   getTaskDownloadSpec,
   taskApi,
   transitionLabel,
@@ -117,7 +118,10 @@ export default function TaskDetail() {
     setActionError('');
     setDownloading(true);
     try {
-      const file = await taskApi.downloadFile(task.id);
+      const fallbackFilename = downloadSpec
+        ? getTaskDownloadFilename(task, downloadSpec)
+        : `${task.partNumber}.stl`;
+      const file = await taskApi.downloadFile(task.id, fallbackFilename);
       const href = URL.createObjectURL(file.blob);
       const anchor = document.createElement('a');
       anchor.href = href;

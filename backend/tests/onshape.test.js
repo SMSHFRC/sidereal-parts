@@ -169,3 +169,17 @@ test('task download rejects unsupported formats before calling Onshape', async (
   assert.equal(res.status, 400);
   assert.equal(res.body.error.code, 'TASK_DOWNLOAD_UNAVAILABLE');
 });
+
+test('CORS exposes the download filename header to the frontend', async () => {
+  const configured = env.corsOrigins[0];
+  const origin = configured?.includes('://*.')
+    ? configured.replace('://*.', '://test.')
+    : configured?.startsWith('*.')
+      ? `https://test.${configured.slice(2)}`
+      : configured ?? 'http://localhost:5173';
+  const res = await api
+    .options('/api/v1/tasks/1/download')
+    .set('Origin', origin)
+    .set('Access-Control-Request-Method', 'GET');
+  assert.match(res.headers['access-control-expose-headers'] ?? '', /Content-Disposition/i);
+});
