@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { fetchOnshapePartThumbnail, fetchOnshapeThumbnail, onshapeApi, type Task } from '../api';
+import {
+  fetchOnshapePartThumbnail,
+  fetchOnshapeThumbnail,
+  onshapeApi,
+  type Task,
+  type TaskDownloadSpec,
+} from '../api';
 
 export function OnshapeConnectButton() {
   const [state, setState] = useState<'hidden' | 'connected' | 'disconnected'>('hidden');
@@ -60,7 +66,17 @@ export function OnshapeConnectButton() {
   );
 }
 
-export function OnshapeCard({ task }: { task: Task }) {
+export function OnshapeCard({
+  task,
+  download,
+  downloading = false,
+  onDownload,
+}: {
+  task: Task;
+  download?: TaskDownloadSpec | null;
+  downloading?: boolean;
+  onDownload?: () => void;
+}) {
   const { onshapeDid, onshapeWvm, onshapeWvmId, onshapeEid } = task;
   const [thumb, setThumb] = useState<string | null>(null);
   const [state, setState] = useState<'loading' | 'ok' | 'not_connected' | 'error'>('loading');
@@ -109,18 +125,30 @@ export function OnshapeCard({ task }: { task: Task }) {
 
   return (
     <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-      <div className="flex items-center justify-between bg-slate-50 px-3 py-1.5">
+      <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-1.5">
         <span className="text-xs font-medium text-slate-600">Onshape 零件</span>
-        {task.drawingUrl && (
-          <a
-            href={task.drawingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs font-medium text-emerald-700 active:text-emerald-900"
-          >
-            開啟 Onshape
-          </a>
-        )}
+        <div className="flex items-center gap-3">
+          {download && onDownload && (
+            <button
+              type="button"
+              onClick={onDownload}
+              disabled={downloading}
+              className="min-h-8 rounded-md bg-slate-900 px-2.5 text-xs font-semibold text-white active:bg-slate-700 disabled:opacity-50"
+            >
+              {downloading ? '準備檔案中...' : `下載 ${download.label}`}
+            </button>
+          )}
+          {task.drawingUrl && (
+            <a
+              href={task.drawingUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-emerald-700 active:text-emerald-900"
+            >
+              開啟 Onshape
+            </a>
+          )}
+        </div>
       </div>
 
       {state === 'loading' && (

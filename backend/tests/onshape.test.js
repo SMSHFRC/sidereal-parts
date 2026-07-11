@@ -157,3 +157,15 @@ test('建任務帶非 Onshape 連結：onshape 欄位為 null', async () => {
   assert.equal(res.status, 201);
   assert.equal(res.body.data.onshapeDid, null);
 });
+
+test('task download rejects unsupported formats before calling Onshape', async () => {
+  const created = await api
+    .post('/api/v1/tasks')
+    .set(auth())
+    .send({ systemId: 1, manufacturingMethodId: 1, quantity: 1 });
+  assert.equal(created.status, 201);
+
+  const res = await api.get(`/api/v1/tasks/${created.body.data.id}/download`).set(auth());
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error.code, 'TASK_DOWNLOAD_UNAVAILABLE');
+});

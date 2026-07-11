@@ -69,6 +69,14 @@ export const onshapeController = {
     res.json({ success: true, data: serialize(result) });
   }),
 
+  downloadTaskFile: asyncHandler(async (req, res) => {
+    const file = await onshapeService.downloadTaskFile(req.user.id, req.params.id, req.user);
+    res.set('Content-Type', file.contentType);
+    res.set('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.set('Cache-Control', 'private, no-store');
+    res.send(file.buf);
+  }),
+
   partThumbnail: asyncHandler(async (req, res) => {
     const { buf, contentType } = await onshapeService.partThumbnail(req.user.id, req.validatedQuery);
     res.set('Content-Type', contentType);

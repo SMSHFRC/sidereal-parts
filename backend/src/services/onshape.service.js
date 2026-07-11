@@ -9,6 +9,7 @@ import { encrypt, decrypt } from '../utils/cryptoBox.js';
 import { parseOnshapeUrl } from '../utils/onshapeUrl.js';
 import { nextPartNumber } from '../utils/partNumber.js';
 import { TASK_STATUS } from '../constants/taskStatus.js';
+import { assertDownloadPermission, downloadSpecForTask } from '../utils/taskDownload.js';
 
 const assertEnabled = () => {
   if (!env.onshapeEnabled) {
@@ -137,6 +138,101 @@ async function apiFetch(userId, path, { raw = false, label = 'Onshape API' } = {
     );
   }
   return raw ? res : res.json();
+}
+
+const isOnshapeHost = (hostname) => hostname === 'onshape.com' || hostname.endsWith('.onshape.com');
+
+async function apiDownloadFetch(userId, path, { method = 'GET', body, label = 'Onshape export' } = {}) {
+  assertEnabled();
+  const token = await getValidToken(userId);
+  let url = `${env.ONSHAPE_API_BASE}${path}`;
+
+  for (let redirectCount = 0; redirectCount < 4; redirectCount += 1) {
+    const res = await fetch(url, {
+      method,
+      body: body == null ? undefined : JSON.stringify(body),
+      redirect: 'manual',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json;charset=UTF-8; qs=0.09, application/octet-stream;q=0.9, */*;q=0.8',
+        ...(body == null ? {} : { 'Content-Type': 'application/json;charset=UTF-8; qs=0.09' }),
+      },
+    });
+
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.headers.get('location');
+      if (!location) throw new ApiError(502, `${label} 重新導向失敗`, 'ONSHAPE_EXPORT_REDIRECT');
+      const next = new URL(location, url);
+      if (!isOnshapeHost(next.hostname)) {
+        throw new ApiError(502, `${label} 重新導向到不受信任的網域`, 'ONSHAPE_EXPORT_REDIRECT');
+      }
+      url = next.toString();
+      continue;
+    }
+
+    if (res.status === 401) throw new ApiError(428, '請重新連結 Onshape 後再下載', 'ONSHAPE_NOT_CONNECTED');
+    if (res.status === 403) throw ApiError.forbidden('你的 Onshape 帳號沒有此零件的存取權');
+    if (res.status === 404) throw ApiError.notFound('Onshape 找不到此零件或匯出檔案');
+    if (!res.ok) {
+      const response = await res.text().catch(() => '');
+      const summary = summarizeOnshapeBody(response);
+      console.error('[onshape export] %s %s %s', res.status, url, response.slice(0, 500));
+      throw new ApiError(
+        502,
+        `${label} 失敗（${res.status}）${summary ? `：${summary.slice(0, 180)}` : ''}`,
+        'ONSHAPE_EXPORT_ERROR',
+      );
+    }
+    return res;
+  }
+
+  throw new ApiError(502, `${label} 重新導向次數過多`, 'ONSHAPE_EXPORT_REDIRECT');
+}
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function exportDxf(userId, task) {
+  const start = await apiDownloadFetch(
+    userId,
+    `/partstudios/d/${task.onshapeDid}/${task.onshapeWvm}/${task.onshapeWvmId}/e/${task.onshapeEid}/translations`,
+    {
+      method: 'POST',
+      label: 'Onshape DXF 轉檔',
+      body: {
+        formatName: 'DXF',
+        storeInDocument: false,
+        translate: true,
+        ...(task.onshapePartId ? { partIds: task.onshapePartId } : {}),
+        ...(task.onshapeConfig ? { configuration: task.onshapeConfig } : {}),
+      },
+    },
+  ).then((res) => res.json());
+
+  let translation = start;
+  for (const waitMs of [250, 500, 750, 1_000, 1_500, 2_000, 2_500, 3_000, 3_500, 4_000, 4_000, 4_000]) {
+    if (translation.requestState === 'DONE') break;
+    if (translation.requestState === 'FAILED') {
+      throw new ApiError(502, `Onshape DXF 轉檔失敗：${translation.failureReason ?? '未知原因'}`, 'ONSHAPE_EXPORT_FAILED');
+    }
+    await delay(waitMs);
+    translation = await apiDownloadFetch(userId, `/translations/${translation.id}`, { label: 'Onshape DXF 轉檔' }).then(
+      (res) => res.json(),
+    );
+  }
+
+  if (translation.requestState !== 'DONE') {
+    throw new ApiError(504, 'Onshape DXF 轉檔逾時，請稍後再試', 'ONSHAPE_EXPORT_TIMEOUT');
+  }
+  const externalDataId = Array.isArray(translation.resultExternalDataIds)
+    ? translation.resultExternalDataIds[0]
+    : translation.resultExternalDataIds;
+  if (!externalDataId) throw new ApiError(502, 'Onshape DXF 轉檔沒有產生下載檔案', 'ONSHAPE_EXPORT_EMPTY');
+
+  return apiDownloadFetch(
+    userId,
+    `/documents/d/${task.onshapeDid}/externaldata/${encodeURIComponent(externalDataId)}`,
+    { label: 'Onshape DXF 下載' },
+  );
 }
 
 const VENDOR_PART_NUMBER = /^(?:WCP|TTB|REV|SDS|CTR|CTRE|VEX|VEN)[-_]?[A-Z0-9]+|^(?:AM|am)-[A-Z0-9]+|^217-\d+/i;
@@ -716,6 +812,45 @@ export const onshapeService = {
   },
 
   // 縮圖代理：Onshape 縮圖端點需帶授權，前端 <img> 無法直接取
+  async downloadTaskFile(userId, taskId, actor) {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        manufacturingMethod: { select: { code: true } },
+        material: { select: { code: true } },
+      },
+    });
+    if (!task) throw ApiError.notFound('找不到任務');
+    assertDownloadPermission(task, actor);
+
+    const spec = downloadSpecForTask(task);
+    if (!spec) {
+      throw ApiError.badRequest('此加工方式或材料目前沒有可下載的加工檔案', 'TASK_DOWNLOAD_UNAVAILABLE');
+    }
+    if (!task.onshapeDid || !task.onshapeWvm || !task.onshapeWvmId || !task.onshapeEid || !task.onshapePartId) {
+      throw ApiError.badRequest('此任務沒有可下載的 Onshape 單一零件資料', 'TASK_DOWNLOAD_NO_SOURCE');
+    }
+
+    let response;
+    if (spec.format === 'stl') {
+      const query = new URLSearchParams({ mode: 'binary', grouping: 'true', scale: '1', units: 'millimeter' });
+      if (task.onshapeConfig) query.set('configuration', task.onshapeConfig);
+      response = await apiDownloadFetch(
+        userId,
+        `/parts/d/${task.onshapeDid}/${task.onshapeWvm}/${task.onshapeWvmId}/e/${task.onshapeEid}/partid/${encodeURIComponent(task.onshapePartId)}/stl?${query}`,
+        { label: 'Onshape STL 下載' },
+      );
+    } else {
+      response = await exportDxf(userId, task);
+    }
+
+    return {
+      buf: Buffer.from(await response.arrayBuffer()),
+      contentType: response.headers.get('content-type') ?? spec.contentType,
+      filename: `${task.partNumber}.${spec.format}`,
+    };
+  },
+
   async thumbnail(userId, { did, wvm, wvmId, eid }) {
     const res = await apiFetch(
       userId,

@@ -5,6 +5,7 @@ import {
   allowedActions,
   canClaimPostProcess,
   fmtTime,
+  getTaskDownloadSpec,
   taskApi,
   transitionLabel,
   type Task,
@@ -55,6 +56,7 @@ export default function TaskDetail() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<TaskStatus | null>(null);
   const [actionError, setActionError] = useState('');
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -74,6 +76,8 @@ export default function TaskDetail() {
   const actions = allowedActions(task, user);
   const isOpenPool = task.status === 'pending' && !task.assignee;
   const showClaimPost = canClaimPostProcess(task, user);
+  const downloadSpec =
+    user.role === 'admin' || user.id === task.assigneeId ? getTaskDownloadSpec(task) : null;
 
   const doAction = async (status: TaskStatus) => {
     if (!window.confirm(confirmFor(task, status, isOpenPool))) return;
@@ -106,6 +110,26 @@ export default function TaskDetail() {
       load();
     } finally {
       setBusy(null);
+    }
+  };
+
+  const doDownload = async () => {
+    setActionError('');
+    setDownloading(true);
+    try {
+      const file = await taskApi.downloadFile(task.id);
+      const href = URL.createObjectURL(file.blob);
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = file.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(href), 1_000);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '檔案下載失敗');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -144,7 +168,7 @@ export default function TaskDetail() {
           </div>
         )}
 
-        <OnshapeCard task={task} />
+        <OnshapeCard task={task} download={downloadSpec} downloading={downloading} onDownload={doDownload} />
 
         {task.drawingUrl && !task.onshapeDid && (
           <a

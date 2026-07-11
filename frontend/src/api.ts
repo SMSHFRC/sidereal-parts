@@ -101,6 +101,23 @@ export interface Task {
   importBatchId: string | null;
 }
 
+export interface TaskDownloadSpec {
+  format: 'stl' | 'dxf';
+  label: string;
+}
+
+export function getTaskDownloadSpec(task: Task): TaskDownloadSpec | null {
+  if (!task.onshapePartId) return null;
+  const methodCode = task.manufacturingMethod.code;
+  const materialCode = task.material?.code ?? '';
+  if (methodCode === '3DP') return { format: 'stl', label: 'STL' };
+  if (methodCode === 'LASER') return { format: 'dxf', label: 'DXF' };
+  if (methodCode === 'CNC' && (materialCode.startsWith('PC_') || materialCode.includes('PLATE'))) {
+    return { format: 'dxf', label: 'DXF' };
+  }
+  return null;
+}
+
 export interface RobotRef {
   id: string;
   code: string;
@@ -414,6 +431,26 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   return json.data as T;
 }
 
+async function downloadFile(path: string, retry = true): Promise<{ blob: Blob; filename: string }> {
+  let res: Response;
+  try {
+    res = await raw(path);
+  } catch {
+    throw new ApiError(0, 'NETWORK', '無法連線到伺服器');
+  }
+
+  if (res.status === 401 && retry && (await tryRefresh())) return downloadFile(path, false);
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    const error = payload?.error;
+    throw new ApiError(res.status, error?.code ?? 'DOWNLOAD_FAILED', error?.message ?? '檔案下載失敗');
+  }
+
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? 'onshape-export';
+  return { blob: await res.blob(), filename };
+}
+
 // ---------- API modules ----------
 export const authApi = {
   login: (username: string, password: string) =>
@@ -452,6 +489,7 @@ export const taskApi = {
     api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   claimPostProcess: (id: string) =>
     api<Task>(`/tasks/${id}/claim-post-process`, { method: 'POST' }),
+  downloadFile: (id: string) => downloadFile(`/tasks/${id}/download`),
 };
 
 export const robotApi = {

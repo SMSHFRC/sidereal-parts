@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { taskController } from '../controllers/task.controller.js';
+import { onshapeController } from '../controllers/onshape.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { validate } from '../middleware/validate.js';
@@ -20,6 +21,7 @@ router.use(authenticate);
 // 建立/編輯/刪除：admin 或 member；狀態變更由 service 依擁有權判斷
 router.post('/', requireRole(ROLES.ADMIN, ROLES.MEMBER), validate(createTaskSchema), taskController.create);
 router.get('/', validate(listTasksSchema), taskController.list);
+router.get('/:id/download', validate(getTaskSchema), onshapeController.downloadTaskFile);
 router.get('/:id', validate(getTaskSchema), taskController.getById);
 router.put('/:id', requireRole(ROLES.ADMIN, ROLES.MEMBER), validate(updateTaskSchema), taskController.update);
 router.post('/:id/claim', validate(getTaskSchema), taskController.claim);
