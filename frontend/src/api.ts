@@ -72,6 +72,7 @@ export interface Task {
   postProcessorId: string | null;
   quantity: number;
   rewardPoints: number;
+  machiningExtensionMinutes: number;
   drawingUrl: string | null;
   dimensions: string | null;
   note: string | null;
@@ -519,6 +520,8 @@ export const taskApi = {
     api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'accepted' }) }),
   updateStatus: (id: string, status: TaskStatus) =>
     api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  extendMachiningTime: (id: string) =>
+    api<Task>(`/tasks/${id}/extend-time`, { method: 'POST' }),
   claimPostProcess: (id: string) =>
     api<Task>(`/tasks/${id}/claim-post-process`, { method: 'POST' }),
   downloadFile: (id: string, fallbackFilename: string) =>

@@ -216,6 +216,21 @@ export const taskService = {
     return withTaskFlags(await prisma.task.findUnique({ where: { id }, include: taskInclude }));
   },
 
+  async extendMachiningTime(id, actor) {
+    if (actor.role !== ROLES.ADMIN) throw ApiError.forbidden('僅 admin 可延長加工時間');
+    const task = await prisma.task.findUnique({ where: { id }, select: { id: true, status: true } });
+    if (!task) throw ApiError.notFound('任務不存在');
+    if (task.status !== TASK_STATUS.PROCESSING) {
+      throw ApiError.badRequest('只有加工中的任務可以延長時間', 'TASK_NOT_PROCESSING');
+    }
+    const updated = await prisma.task.update({
+      where: { id },
+      data: { machiningExtensionMinutes: { increment: 20 } },
+      include: taskInclude,
+    });
+    return withTaskFlags(updated);
+  },
+
   async update(id, data, actor) {
     const task = await prisma.task.findUnique({ where: { id } });
     if (!task) throw ApiError.notFound('任務不存在');
@@ -401,7 +416,10 @@ export const taskService = {
                 status: TASK_STATUS.PENDING,
                 assigneeId: null,
               }
-            : { status: nextStatus },
+            : {
+                status: nextStatus,
+                ...(nextStatus === TASK_STATUS.PROCESSING ? { machiningExtensionMinutes: 0 } : {}),
+              },
         include: taskInclude,
       });
 

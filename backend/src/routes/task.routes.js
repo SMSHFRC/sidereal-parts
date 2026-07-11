@@ -23,6 +23,7 @@ router.post('/', requireRole(ROLES.ADMIN, ROLES.MEMBER), validate(createTaskSche
 router.get('/', validate(listTasksSchema), taskController.list);
 router.get('/:id/download', validate(getTaskSchema), onshapeController.downloadTaskFile);
 router.post('/:id/simulate-timeout', requireRole(ROLES.ADMIN), validate(getTaskSchema), taskController.simulateTimeout);
+router.post('/:id/extend-time', requireRole(ROLES.ADMIN), validate(getTaskSchema), taskController.extendMachiningTime);
 router.get('/:id', validate(getTaskSchema), taskController.getById);
 router.put('/:id', requireRole(ROLES.ADMIN, ROLES.MEMBER), validate(updateTaskSchema), taskController.update);
 router.post('/:id/claim', validate(getTaskSchema), taskController.claim);

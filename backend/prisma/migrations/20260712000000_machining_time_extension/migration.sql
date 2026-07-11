@@ -1,0 +1,2 @@
+ALTER TABLE "tasks"
+ADD COLUMN IF NOT EXISTS "machining_extension_minutes" INTEGER NOT NULL DEFAULT 0;
