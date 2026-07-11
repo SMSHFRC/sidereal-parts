@@ -9,14 +9,16 @@ export const onshapeController = {
   }),
 
   authUrl: asyncHandler(async (req, res) => {
-    res.json({ success: true, data: { url: onshapeService.authUrl(req.user.id) } });
+    res.json({ success: true, data: { url: onshapeService.authUrl(req.user.id, req.query.returnTo) } });
   }),
 
   // Onshape 瀏覽器 redirect 進來（無 JWT header），完成後導回前端
   callback: asyncHandler(async (req, res) => {
     try {
-      await onshapeService.handleCallback({ code: req.query.code, state: req.query.state });
-      res.redirect(`${env.FRONTEND_URL}/?onshape=connected`);
+      const { returnTo } = await onshapeService.handleCallback({ code: req.query.code, state: req.query.state });
+      const target = new URL(returnTo, env.FRONTEND_URL);
+      target.searchParams.set('onshape', 'connected');
+      res.redirect(target.toString());
     } catch (err) {
       console.error('[onshape callback]', err.message);
       res.redirect(`${env.FRONTEND_URL}/?onshape=error`);

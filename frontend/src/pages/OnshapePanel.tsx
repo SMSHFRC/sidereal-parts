@@ -65,6 +65,7 @@ export default function OnshapePanel() {
   const [result, setResult] = useState<OnshapeImportResult | null>(null);
   const [thumb, setThumb] = useState<string | null>(null);
   const [busy, setBusy] = useState<'preview' | 'import' | null>(null);
+  const [connectBusy, setConnectBusy] = useState(false);
   const [error, setError] = useState('');
 
   // 主檔 + 機器人清單
@@ -191,6 +192,21 @@ export default function OnshapePanel() {
     }
   };
 
+  const reconnectOnshape = async () => {
+    setError('');
+    setConnectBusy(true);
+    try {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      const { url: authUrl } = await onshapeApi.authUrl(returnTo);
+      const popup = window.open(authUrl, '_blank');
+      if (!popup) window.location.assign(authUrl);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '無法開啟 Onshape 授權頁面');
+    } finally {
+      setConnectBusy(false);
+    }
+  };
+
   const clsBtn = (active: boolean, color: string) =>
     `min-h-8 flex-1 rounded-md px-1 text-[11px] font-semibold ${active ? color : 'bg-slate-100 text-slate-500'}`;
 
@@ -206,12 +222,22 @@ export default function OnshapePanel() {
 
   return (
     <main className="min-h-dvh bg-slate-50 p-3 text-slate-900">
-      <header className="flex items-center gap-2">
+      <header className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
         <img src="/logo.png" alt="FRC 9501" className="h-8 w-8 rounded-md" />
         <div>
           <h1 className="text-sm font-bold">sidereal-parts</h1>
           <p className="text-xs text-slate-500">Onshape 匯入</p>
         </div>
+        </div>
+        <button
+          type="button"
+          onClick={reconnectOnshape}
+          disabled={connectBusy}
+          className="min-h-9 shrink-0 rounded-md border border-emerald-600 px-2.5 text-xs font-semibold text-emerald-700 disabled:opacity-50"
+        >
+          {connectBusy ? '開啟中...' : '連結 Onshape'}
+        </button>
       </header>
 
       {thumb && (
@@ -270,7 +296,14 @@ export default function OnshapePanel() {
         </div>
       )}
 
-      {error && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+      {error && (
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          <p>{error}</p>
+          <button type="button" onClick={reconnectOnshape} className="shrink-0 font-semibold underline">
+            重新連結
+          </button>
+        </div>
+      )}
 
       <div className="mt-3 flex gap-2">
         <button

@@ -21,8 +21,21 @@ const assertEnabled = () => {
 
 // state 用短效 JWT：callback 是瀏覽器 redirect（無 Authorization header），
 // 靠簽名的 state 識別使用者並防 CSRF。
-const signState = (userId) =>
-  jwt.sign({ sub: userId.toString(), purpose: 'onshape_oauth' }, env.JWT_ACCESS_SECRET, {
+const normalizeReturnTo = (value) => {
+  if (
+    typeof value !== 'string' ||
+    value.length > 2048 ||
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    value.includes('\\')
+  ) {
+    return '/';
+  }
+  return value;
+};
+
+const signState = (userId, returnTo) =>
+  jwt.sign({ sub: userId.toString(), purpose: 'onshape_oauth', returnTo: normalizeReturnTo(returnTo) }, env.JWT_ACCESS_SECRET, {
     expiresIn: '30m',
   });
 
@@ -30,7 +43,7 @@ const verifyState = (state) => {
   try {
     const p = jwt.verify(state, env.JWT_ACCESS_SECRET);
     if (p.purpose !== 'onshape_oauth') throw new Error('bad purpose');
-    return BigInt(p.sub);
+    return { userId: BigInt(p.sub), returnTo: normalizeReturnTo(p.returnTo) };
   } catch {
     throw ApiError.badRequest('OAuth state 無效或已過期', 'BAD_STATE');
   }
@@ -190,6 +203,19 @@ async function apiDownloadFetch(userId, path, { method = 'GET', body, label = 'O
 }
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const originalPartName = (task) => {
+  const sourceLine = task.note?.split('\n').find((line) => line.startsWith('Onshape: '));
+  return sourceLine?.slice('Onshape: '.length).trim() || task.partNumber;
+};
+
+export const downloadFilename = (task, format) => {
+  const base = originalPartName(task)
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_')
+    .replace(/\.stl$/i, '')
+    .trim();
+  return `${base || task.partNumber}.${format}`;
+};
 
 async function exportDxf(userId, task) {
   const start = await apiDownloadFetch(
@@ -428,14 +454,14 @@ async function makeImportPreview(userId, url) {
 
 export const onshapeService = {
   // 前端跳轉用的授權網址
-  authUrl(userId) {
+  authUrl(userId, returnTo) {
     assertEnabled();
     const q = new URLSearchParams({
       response_type: 'code',
       client_id: env.ONSHAPE_CLIENT_ID,
       redirect_uri: env.onshapeRedirectUri,
       scope: 'OAuth2Read',
-      state: signState(userId),
+      state: signState(userId, returnTo),
     });
     return `${env.ONSHAPE_OAUTH_BASE}/oauth/authorize?${q}`;
   },
@@ -444,14 +470,14 @@ export const onshapeService = {
   async handleCallback({ code, state }) {
     assertEnabled();
     if (!code) throw ApiError.badRequest('缺少授權碼');
-    const userId = verifyState(state);
+    const { userId, returnTo } = verifyState(state);
     const tok = await tokenRequest({
       grant_type: 'authorization_code',
       code,
       redirect_uri: env.onshapeRedirectUri,
     });
     await saveTokens(userId, tok);
-    return userId;
+    return { userId, returnTo };
   },
 
   async status(userId) {
@@ -847,7 +873,7 @@ export const onshapeService = {
     return {
       buf: Buffer.from(await response.arrayBuffer()),
       contentType: response.headers.get('content-type') ?? spec.contentType,
-      filename: `${task.partNumber}.${spec.format}`,
+      filename: downloadFilename(task, spec.format),
     };
   },
 

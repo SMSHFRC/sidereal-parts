@@ -527,7 +527,8 @@ export const metaApi = {
 
 export const onshapeApi = {
   status: () => api<OnshapeStatus>('/onshape/status'),
-  authUrl: () => api<{ url: string }>('/onshape/auth-url'),
+  authUrl: (returnTo?: string) =>
+    api<{ url: string }>(`/onshape/auth-url${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`),
   disconnect: () => api<{ disconnected: boolean }>('/onshape/connection', { method: 'DELETE' }),
   resolve: (url: string) =>
     api<OnshapeResolved>('/onshape/resolve', { method: 'POST', body: JSON.stringify({ url }) }),
