@@ -9,25 +9,42 @@ const inputCls =
 
 // 完成度條 + 未接/進行/完成 統計
 export function ProgressBar({ p }: { p?: TaskProgress }) {
-  if (!p || p.total === 0) {
-    return <p className="mt-1 text-xs text-slate-400">尚無任務</p>;
+  const machining = p?.machining ?? p;
+  const parts = p?.parts;
+  if (!machining || (machining.total === 0 && (!parts || parts.total === 0))) {
+    return <p className="mt-1 text-xs text-slate-400">尚無任務或 COTS 零件</p>;
   }
   return (
-    <div className="mt-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-500">
-          待接 {p.pending} · 進行 {p.active} · 完成 {p.done}
-        </span>
-        <span className="font-semibold text-slate-800">{p.percent}%</span>
+    <div className="mt-2 space-y-2">
+      <div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-slate-500">
+            加工完成 {machining.done}/{machining.total} · 待接 {machining.pending} · 進行 {machining.active}
+          </span>
+          <span className="font-semibold text-slate-800">{machining.percent}%</span>
+        </div>
+        <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-slate-100">
+          <div className="bg-emerald-500" style={{ width: `${machining.total ? (machining.done / machining.total) * 100 : 0}%` }} />
+          <div className="bg-indigo-400" style={{ width: `${machining.total ? (machining.active / machining.total) * 100 : 0}%` }} />
+        </div>
       </div>
-      <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-slate-100">
-        <div className="bg-emerald-500" style={{ width: `${(p.done / p.total) * 100}%` }} />
-        <div className="bg-indigo-400" style={{ width: `${(p.active / p.total) * 100}%` }} />
-      </div>
+
+      {parts && (
+        <div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-500">
+              零件到齊 {parts.collected}/{parts.needed} · 未拿齊 {parts.open} 項
+            </span>
+            <span className="font-semibold text-slate-800">{parts.percent}%</span>
+          </div>
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full bg-amber-500" style={{ width: `${parts.percent}%` }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
 export default function Robots() {
   const { user } = useAuth();
   const [robots, setRobots] = useState<Robot[] | null>(null);
@@ -72,9 +89,7 @@ export default function Robots() {
     setBusy(true);
     setError('');
     try {
-      await robotApi.createSubsystem(robotId, {
-        name: sub.name.trim(),
-      });
+      await robotApi.createSubsystem(robotId, { name: sub.name.trim() });
       setSubForms((prev) => ({ ...prev, [robotId]: { name: '' } }));
       load();
     } catch (err) {
@@ -101,7 +116,7 @@ export default function Robots() {
           <input
             value={form.name}
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-            placeholder="名稱"
+            placeholder="機器人名稱"
             className={inputCls}
           />
           <input
@@ -129,9 +144,7 @@ export default function Robots() {
             <section key={robot.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 className="font-semibold text-slate-900">
-                    {robot.name}
-                  </h2>
+                  <h2 className="font-semibold text-slate-900">{robot.name}</h2>
                   {robot.note && <p className="mt-1 text-sm text-slate-500">{robot.note}</p>}
                 </div>
                 <span className="text-xs text-slate-500">{robot.subsystems.length} 個子系統</span>
@@ -146,9 +159,7 @@ export default function Robots() {
                     to={`/subsystems/${sub.id}`}
                     className="rounded-lg border border-slate-200 px-3 py-2 active:bg-slate-50"
                   >
-                    <p className="font-medium text-slate-900">
-                      {sub.name}
-                    </p>
+                    <p className="font-medium text-slate-900">{sub.name}</p>
                     <ProgressBar p={sub.progress} />
                   </Link>
                 ))}

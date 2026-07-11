@@ -57,45 +57,103 @@ async function uniqueSubsystemCode(tx, robotId, desired) {
   return `SUBSYS_${Date.now().toString(36).toUpperCase()}`.slice(0, 32);
 }
 
-// 依 systemId 統計任務狀態，附到每個 subsystem 上（進度顯示用）
-// pending=待接單、active=進行中(accepted/processing/pending_review/post_processing)、
-// done=completed；cancelled 不列入分母。percent = done/total。
+const blankMachiningProgress = () => ({ pending: 0, active: 0, done: 0, total: 0, percent: 0 });
+const blankPartsProgress = () => ({ needed: 0, collected: 0, open: 0, total: 0, percent: 0 });
+
+const toMachiningProgress = (bucket = blankMachiningProgress()) => {
+  const total = bucket.pending + bucket.active + bucket.done;
+  return {
+    ...bucket,
+    total,
+    percent: total ? Math.round((bucket.done / total) * 100) : 0,
+  };
+};
+
+const toPartsProgress = (bucket = blankPartsProgress()) => ({
+  ...bucket,
+  total: bucket.needed,
+  percent: bucket.needed ? Math.round((bucket.collected / bucket.needed) * 100) : 0,
+});
+
+function mergeProgress(machining, parts) {
+  return {
+    ...machining,
+    machining,
+    parts,
+    percent: machining.percent,
+  };
+}
+
+// Progress has two tracks: machining tasks and COTS/material collection.
 async function attachProgress(robots) {
   const list = Array.isArray(robots) ? robots : [robots];
   const systemIds = list.flatMap((r) => r.subsystems.map((s) => s.systemId)).filter(Boolean);
-  if (systemIds.length === 0) return robots;
+  const subsystemIds = list.flatMap((r) => r.subsystems.map((s) => s.id)).filter(Boolean);
+  if (systemIds.length === 0 && subsystemIds.length === 0) return robots;
 
-  const grouped = await prisma.task.groupBy({
-    by: ['systemId', 'status'],
-    where: { systemId: { in: systemIds } },
-    _count: { _all: true },
-  });
+  const [grouped, cotsRows] = await Promise.all([
+    systemIds.length
+      ? prisma.task.groupBy({
+          by: ['systemId', 'status'],
+          where: { systemId: { in: systemIds } },
+          _count: { _all: true },
+        })
+      : [],
+    subsystemIds.length
+      ? prisma.cotsItem.findMany({
+          where: { subsystemId: { in: subsystemIds } },
+          select: { subsystemId: true, quantity: true, collectedQuantity: true, isCollected: true },
+        })
+      : [],
+  ]);
+
   const bySystem = new Map();
   for (const g of grouped) {
-    const bucket = bySystem.get(g.systemId) ?? { pending: 0, active: 0, done: 0 };
+    const bucket = bySystem.get(g.systemId) ?? blankMachiningProgress();
     if (g.status === 'pending') bucket.pending += g._count._all;
     else if (g.status === 'completed') bucket.done += g._count._all;
-    else if (['accepted', 'processing', 'pending_review', 'post_processing'].includes(g.status))
+    else if (['accepted', 'processing', 'pending_review', 'post_processing'].includes(g.status)) {
       bucket.active += g._count._all;
+    }
     bySystem.set(g.systemId, bucket);
   }
 
+  const bySubsystemParts = new Map();
+  for (const row of cotsRows) {
+    if (!row.subsystemId) continue;
+    const bucket = bySubsystemParts.get(row.subsystemId) ?? blankPartsProgress();
+    const needed = Math.max(0, row.quantity);
+    const collected = row.isCollected ? needed : Math.min(Math.max(0, row.collectedQuantity), needed);
+    bucket.needed += needed;
+    bucket.collected += collected;
+    if (collected < needed) bucket.open += 1;
+    bySubsystemParts.set(row.subsystemId, bucket);
+  }
+
   for (const robot of list) {
-    const sum = { pending: 0, active: 0, done: 0 };
+    const machiningSum = blankMachiningProgress();
+    const partsSum = blankPartsProgress();
     for (const sub of robot.subsystems) {
-      const b = bySystem.get(sub.systemId) ?? { pending: 0, active: 0, done: 0 };
-      const total = b.pending + b.active + b.done;
-      sub.progress = { ...b, total, percent: total ? Math.round((b.done / total) * 100) : 0 };
-      sum.pending += b.pending;
-      sum.active += b.active;
-      sum.done += b.done;
+      const machining = toMachiningProgress(bySystem.get(sub.systemId));
+      const parts = toPartsProgress(bySubsystemParts.get(sub.id));
+      sub.progress = mergeProgress(machining, parts);
+      machiningSum.pending += machining.pending;
+      machiningSum.active += machining.active;
+      machiningSum.done += machining.done;
+      partsSum.needed += parts.needed;
+      partsSum.collected += parts.collected;
+      partsSum.open += parts.open;
     }
-    const total = sum.pending + sum.active + sum.done;
-    robot.progress = { ...sum, total, percent: total ? Math.round((sum.done / total) * 100) : 0 };
+    robot.progress = mergeProgress(toMachiningProgress(machiningSum), toPartsProgress(partsSum));
   }
   return robots;
 }
 
+async function attachSubsystemProgress(subsystem) {
+  const robot = { subsystems: [subsystem] };
+  await attachProgress(robot);
+  return subsystem;
+}
 export const robotService = {
   async list() {
     const robots = await prisma.robot.findMany({
@@ -151,7 +209,7 @@ export const robotService = {
       include: subsystemInclude,
     });
     if (!subsystem) throw ApiError.notFound('找不到此子系統');
-    return subsystem;
+    return attachSubsystemProgress(subsystem);
   },
 
   async createSubsystem(robotId, data, actor) {

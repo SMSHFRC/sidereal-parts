@@ -79,9 +79,9 @@ export default function ImportItems() {
     <div className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-slate-900">COTS 收集清單</h1>
+          <h1 className="text-lg font-bold text-slate-900">COTS 資料夾</h1>
           <p className="mt-1 text-sm text-slate-500">
-            匯入時標成 COTS 或跳過的零件會保存在所屬系統/子系統中，用來確認材料與採購件有沒有拿齊。
+            每個子系統有自己的 COTS 資料夾；匯入時標成 COTS 或跳過的零件會保存在這裡，用來確認材料與採購件有沒有拿齊。
           </p>
         </div>
         <button
@@ -132,7 +132,7 @@ export default function ImportItems() {
 
       {error && <ErrorBox message={error} onRetry={load} />}
       {!rows && !error ? (
-        <Spinner label="讀取 COTS 清單中..." />
+        <Spinner label="讀取 COTS 資料夾中..." />
       ) : rows && rows.length === 0 ? (
         <Empty text="目前沒有符合條件的 COTS 零件" />
       ) : (

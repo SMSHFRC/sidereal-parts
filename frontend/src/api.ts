@@ -116,13 +116,26 @@ export interface SubsystemRef {
 
 // 任務進度統計（後端 attachProgress 附上）
 export interface TaskProgress {
-  pending: number; // 還沒接
-  active: number; // 進行中
-  done: number; // 已完成
+  pending: number;
+  active: number;
+  done: number;
   total: number;
-  percent: number; // 完成度 0-100
+  percent: number;
+  machining?: {
+    pending: number;
+    active: number;
+    done: number;
+    total: number;
+    percent: number;
+  };
+  parts?: {
+    needed: number;
+    collected: number;
+    open: number;
+    total: number;
+    percent: number;
+  };
 }
-
 export interface Robot extends RobotRef {
   note: string | null;
   isActive: boolean;
@@ -401,7 +414,7 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   return json.data as T;
 }
 
-// ---------- 端點 ----------
+// ---------- API modules ----------
 export const authApi = {
   login: (username: string, password: string) =>
     api<AuthPayload>('/auth/login', {
@@ -634,38 +647,35 @@ export function allowedActions(task: Task, me: Me): TaskStatus[] {
 export function transitionLabel(from: TaskStatus, to: TaskStatus): string {
   if (to === 'pending_review') return '送審驗收';
   if (from === 'pending_review') {
-    if (to === 'completed') return '驗收通過（完成）';
-    if (to === 'post_processing') return '驗收通過，交後處理';
-    if (to === 'processing') return '退回重做';
+    if (to === 'completed') return '驗收通過，完成';
+    if (to === 'post_processing') return '驗收通過，進入後處理';
+    if (to === 'processing') return '退件重做';
   }
   if (to === 'accepted' && from === 'pending') return '接單';
   return ACTION_LABEL[to];
 }
 
-/** 是否可接後處理（post_processing 且尚無後處理者，加工者皆可認領） */
 export function canClaimPostProcess(task: Task, me: Me): boolean {
-  return (
-    task.status === 'post_processing' && !task.postProcessor && me.role === 'member'
-  );
+  return task.status === 'post_processing' && !task.postProcessor && me.role === 'member';
 }
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {
   pending: '待接受',
-  accepted: '已接受',
+  accepted: '已接單',
   processing: '加工中',
   post_processing: '後處理中',
   pending_review: '待驗收',
   completed: '已完成',
-  rejected: '已放棄',
+  rejected: '已退回',
   cancelled: '已取消',
 };
 
 export const ACTION_LABEL: Record<TaskStatus, string> = {
-  pending: '—',
-  accepted: '接受',
-  rejected: '放棄回池',
+  pending: '退回待接',
+  accepted: '接單',
+  rejected: '放棄任務',
   processing: '開始加工',
-  post_processing: '加工完成，交後處理',
+  post_processing: '加工完成，交棒後處理',
   pending_review: '送審驗收',
   completed: '完成',
   cancelled: '取消任務',
@@ -676,45 +686,42 @@ export const ROLE_LABEL: Record<Role, string> = {
   member: '隊員',
 };
 
-// ---------- 主檔選項 fallback ----------
-// 啟動時優先抓 /meta/options；失敗時用這份 seed 對應值，避免主檔端點暫時故障時整站不能建單。
 export const FALLBACK_SYSTEM_OPTIONS = [
-  { id: 1, label: 'ARM — 機械手臂' },
-  { id: 2, label: 'CHS — 底盤系統' },
-  { id: 3, label: 'PWR — 電源模組' },
+  { id: 1, label: 'ARM - 機械手臂' },
+  { id: 2, label: 'CHS - 底盤系統' },
+  { id: 3, label: 'PWR - 電控系統' },
 ];
 export const FALLBACK_METHOD_OPTIONS = [
-  { id: 1, label: 'CNC — CNC Router' },
-  { id: 2, label: '車床' },
-  { id: 3, label: '3D 列印' },
-  { id: 4, label: 'MANUAL_MILL — 手動銑床' },
-  { id: 5, label: 'LASER — 雷切機' },
-  { id: 6, label: 'CUTOFF — 切斷機' },
+  { id: 1, label: 'CNC - CNC Router' },
+  { id: 2, label: 'LATHE - 車床' },
+  { id: 3, label: '3DP - 3D 列印' },
+  { id: 4, label: 'MANUAL_MILL - 手動銑床' },
+  { id: 5, label: 'LASER - 雷切機' },
+  { id: 6, label: 'CUTOFF - 切斷機' },
 ];
 export const FALLBACK_MATERIAL_OPTIONS = [
   { id: 3, label: 'PLA' },
   { id: 4, label: 'ABS' },
-  { id: 5, label: 'PACF — PA-CF' },
-  { id: 6, label: 'MDF_3MM — 密集板 3mm' },
-  { id: 7, label: 'MDF_6MM — 密集板 6mm' },
-  { id: 8, label: 'SRPP_6MM — SRPP 6mm' },
-  { id: 9, label: 'PC_3MM — PC 3mm' },
-  { id: 10, label: 'PC_6MM — PC 6mm' },
-  { id: 11, label: 'AL6061_PLATE_3MM — 6061 鋁板 3mm' },
-  { id: 12, label: 'AL6061_PLATE_5MM — 6061 鋁板 5mm' },
-  { id: 13, label: 'HEX_SHAFT_0_5IN — 六角軸 1/2in' },
-  { id: 14, label: 'ROUND_SHAFT_10MM — 圓軸 10mm' },
-  { id: 15, label: 'ROUND_SHAFT_15MM — 圓軸 15mm' },
+  { id: 5, label: 'PACF - PA-CF' },
+  { id: 6, label: 'MDF_3MM - 密集板 3mm' },
+  { id: 7, label: 'MDF_6MM - 密集板 6mm' },
+  { id: 8, label: 'SRPP_6MM - SRPP 6mm' },
+  { id: 9, label: 'PC_3MM - PC 3mm' },
+  { id: 10, label: 'PC_6MM - PC 6mm' },
+  { id: 11, label: 'AL6061_PLATE_3MM - 6061 鋁板 3mm' },
+  { id: 12, label: 'AL6061_PLATE_5MM - 6061 鋁板 5mm' },
+  { id: 13, label: 'HEX_SHAFT_0_5IN - 六角軸 1/2in' },
+  { id: 14, label: 'ROUND_SHAFT_10MM - 圓軸 10mm' },
+  { id: 15, label: 'ROUND_SHAFT_15MM - 圓軸 15mm' },
 ];
 export const FALLBACK_POST_PROCESS_OPTIONS = [
-  { id: 4, label: 'TAP — 攻牙' },
-  { id: 5, label: 'CHAMFER — 倒角' },
+  { id: 4, label: 'TAP - 攻牙' },
+  { id: 5, label: 'CHAMFER - 倒角' },
 ];
 
 export function toSelectOptions(items: OptionRef[]) {
-  return items.map((o) => ({ id: o.id, label: `${o.code} — ${o.name}` }));
+  return items.map((o) => ({ id: o.id, label: `${o.code} - ${o.name}` }));
 }
-
 export function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-TW', {
     timeZone: 'Asia/Taipei',

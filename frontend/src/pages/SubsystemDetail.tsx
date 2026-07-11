@@ -65,7 +65,7 @@ export default function SubsystemDetail() {
             to={`/import-items?robotId=${subsystem.robotId}&subsystemId=${subsystem.id}`}
             className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
           >
-            COTS 清單
+            COTS 資料夾
           </Link>
           <Link
             to={`/import?robotId=${subsystem.robotId}&subsystemId=${subsystem.id}`}
