@@ -130,7 +130,6 @@ function Layout({ children }: { children: ReactNode }) {
             </NavLink>
             <NavLink to="/import">匯入</NavLink>
             <NavLink to="/robots">機器人</NavLink>
-            <NavLink to="/import-items">COTS</NavLink>
             <NavLink to="/leaderboard">排行榜</NavLink>
             {user.role === 'admin' && <NavLink to="/settings/master-data">主檔</NavLink>}
             <div className="shrink-0">
