@@ -116,7 +116,7 @@ const summarizeOnshapeBody = (body) => {
   } catch {
     // Non-JSON responses are common for proxy and gateway errors.
   }
-  const plain = body.replace(/\s+/g, ' ').trim();
+  const plain = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   return plain || null;
 };
 
@@ -202,8 +202,6 @@ async function apiDownloadFetch(userId, path, { method = 'GET', body, label = 'O
   throw new ApiError(502, `${label} 重新導向次數過多`, 'ONSHAPE_EXPORT_REDIRECT');
 }
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 const originalPartName = (task) => {
   const sourceLine = task.note?.split('\n').find((line) => line.startsWith('Onshape: '));
   return sourceLine?.slice('Onshape: '.length).trim() || task.partNumber;
@@ -212,52 +210,37 @@ const originalPartName = (task) => {
 export const downloadFilename = (task, format) => {
   const base = originalPartName(task)
     .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_')
-    .replace(/\.stl$/i, '')
+    .replace(/\.(?:stl|dxf)$/i, '')
     .trim();
   return `${base || task.partNumber}.${format}`;
 };
 
+export const dxfExportPayload = (task) => ({
+  format: 'DXF',
+  destinationName: originalPartName(task),
+  version: '2013',
+  view: 'top',
+  flatten: true,
+  includeBendCenterlines: false,
+  includeBendLines: false,
+  includeSketches: false,
+  sheetMetalFlat: false,
+  triggerAutoDownload: true,
+  storeInDocument: false,
+  units: 'millimeter',
+  partIds: task.onshapePartId,
+  ...(task.onshapeConfig ? { configuration: task.onshapeConfig } : {}),
+});
+
 async function exportDxf(userId, task) {
-  const start = await apiDownloadFetch(
-    userId,
-    `/partstudios/d/${task.onshapeDid}/${task.onshapeWvm}/${task.onshapeWvmId}/e/${task.onshapeEid}/translations`,
-    {
-      method: 'POST',
-      label: 'Onshape DXF 轉檔',
-      body: {
-        formatName: 'DXF',
-        storeInDocument: false,
-        translate: true,
-        ...(task.onshapePartId ? { partIds: task.onshapePartId } : {}),
-        ...(task.onshapeConfig ? { configuration: task.onshapeConfig } : {}),
-      },
-    },
-  ).then((res) => res.json());
-
-  let translation = start;
-  for (const waitMs of [250, 500, 750, 1_000, 1_500, 2_000, 2_500, 3_000, 3_500, 4_000, 4_000, 4_000]) {
-    if (translation.requestState === 'DONE') break;
-    if (translation.requestState === 'FAILED') {
-      throw new ApiError(502, `Onshape DXF 轉檔失敗：${translation.failureReason ?? '未知原因'}`, 'ONSHAPE_EXPORT_FAILED');
-    }
-    await delay(waitMs);
-    translation = await apiDownloadFetch(userId, `/translations/${translation.id}`, { label: 'Onshape DXF 轉檔' }).then(
-      (res) => res.json(),
-    );
-  }
-
-  if (translation.requestState !== 'DONE') {
-    throw new ApiError(504, 'Onshape DXF 轉檔逾時，請稍後再試', 'ONSHAPE_EXPORT_TIMEOUT');
-  }
-  const externalDataId = Array.isArray(translation.resultExternalDataIds)
-    ? translation.resultExternalDataIds[0]
-    : translation.resultExternalDataIds;
-  if (!externalDataId) throw new ApiError(502, 'Onshape DXF 轉檔沒有產生下載檔案', 'ONSHAPE_EXPORT_EMPTY');
-
   return apiDownloadFetch(
     userId,
-    `/documents/d/${task.onshapeDid}/externaldata/${encodeURIComponent(externalDataId)}`,
-    { label: 'Onshape DXF 下載' },
+    `/documents/d/${task.onshapeDid}/${task.onshapeWvm}/${task.onshapeWvmId}/e/${task.onshapeEid}/export`,
+    {
+      method: 'POST',
+      label: 'Onshape DXF 匯出',
+      body: dxfExportPayload(task),
+    },
   );
 }
 
