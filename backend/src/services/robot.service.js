@@ -87,15 +87,14 @@ function mergeProgress(machining, parts) {
 // Progress has two tracks: machining tasks and COTS/material collection.
 async function attachProgress(robots) {
   const list = Array.isArray(robots) ? robots : [robots];
-  const systemIds = list.flatMap((r) => r.subsystems.map((s) => s.systemId)).filter(Boolean);
   const subsystemIds = list.flatMap((r) => r.subsystems.map((s) => s.id)).filter(Boolean);
-  if (systemIds.length === 0 && subsystemIds.length === 0) return robots;
+  if (subsystemIds.length === 0) return robots;
 
   const [grouped, cotsRows] = await Promise.all([
-    systemIds.length
+    subsystemIds.length
       ? prisma.task.groupBy({
-          by: ['systemId', 'status'],
-          where: { systemId: { in: systemIds } },
+          by: ['subsystemId', 'status'],
+          where: { subsystemId: { in: subsystemIds } },
           _count: { _all: true },
         })
       : [],
@@ -107,15 +106,16 @@ async function attachProgress(robots) {
       : [],
   ]);
 
-  const bySystem = new Map();
+  const bySubsystem = new Map();
   for (const g of grouped) {
-    const bucket = bySystem.get(g.systemId) ?? blankMachiningProgress();
+    if (!g.subsystemId) continue;
+    const bucket = bySubsystem.get(g.subsystemId) ?? blankMachiningProgress();
     if (g.status === 'pending') bucket.pending += g._count._all;
     else if (g.status === 'completed') bucket.done += g._count._all;
     else if (['accepted', 'processing', 'pending_review', 'post_processing'].includes(g.status)) {
       bucket.active += g._count._all;
     }
-    bySystem.set(g.systemId, bucket);
+    bySubsystem.set(g.subsystemId, bucket);
   }
 
   const bySubsystemParts = new Map();
@@ -134,7 +134,7 @@ async function attachProgress(robots) {
     const machiningSum = blankMachiningProgress();
     const partsSum = blankPartsProgress();
     for (const sub of robot.subsystems) {
-      const machining = toMachiningProgress(bySystem.get(sub.systemId));
+      const machining = toMachiningProgress(bySubsystem.get(sub.id));
       const parts = toPartsProgress(bySubsystemParts.get(sub.id));
       sub.progress = mergeProgress(machining, parts);
       machiningSum.pending += machining.pending;

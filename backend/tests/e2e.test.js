@@ -507,3 +507,35 @@ test('退回重做後：管理員不可送審/放棄，加工者可重新送審'
     .send({ status: 'pending_review' });
   assert.equal(resubmit.status, 200);
 });
+
+test('subsystem progress counts pending tasks by subsystem ownership', async () => {
+  const robot = await api
+    .post('/api/v1/robots')
+    .set(auth(ctx.adminToken))
+    .send({ name: `Progress Robot ${S}` });
+  assert.equal(robot.status, 201);
+
+  const subsystem = await api
+    .post(`/api/v1/robots/${robot.body.data.id}/subsystems`)
+    .set(auth(ctx.adminToken))
+    .send({ name: 'Progress Subsystem' });
+  assert.equal(subsystem.status, 201);
+
+  const task = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({
+      systemId: subsystem.body.data.system.id,
+      robotId: robot.body.data.id,
+      subsystemId: subsystem.body.data.id,
+      manufacturingMethodId: ctx.methodId['3DP'],
+      quantity: 1,
+    });
+  assert.equal(task.status, 201);
+  assert.equal(task.body.data.status, 'pending');
+
+  const current = await api.get(`/api/v1/robots/${robot.body.data.id}`).set(auth(ctx.memberAToken));
+  assert.equal(current.status, 200);
+  assert.equal(current.body.data.subsystems[0].progress.machining.pending, 1);
+  assert.equal(current.body.data.progress.machining.pending, 1);
+});
