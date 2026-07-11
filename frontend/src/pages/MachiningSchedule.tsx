@@ -11,6 +11,7 @@ import {
   type TaskStatus,
 } from '../api';
 import { ErrorBox, Spinner, StatusBadge } from '../ui';
+import { machiningMinutes } from '../components/ProcessingTimeAlert';
 
 type FilterKey = 'all' | 'pending' | 'active' | 'review';
 
@@ -306,6 +307,9 @@ export default function MachiningSchedule() {
                     <p className="truncate font-semibold">{sourceName(processing[0])}</p>
                     <p className="mt-0.5 truncate">
                       {processing[0].assignee?.username ?? '未指派'}
+                      {processing[0].processingStartedAt
+                        ? ` · 已加工 ${machiningMinutes(processing[0])} 分鐘`
+                        : ''}
                       {processing.length > 1 ? `，另有 ${processing.length - 1} 件加工中` : ''}
                     </p>
                   </div>

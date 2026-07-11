@@ -77,6 +77,7 @@ export interface Task {
   note: string | null;
   status: TaskStatus;
   reviewRejected?: boolean;
+  processingStartedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   system: Ref;

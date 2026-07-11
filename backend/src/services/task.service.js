@@ -38,7 +38,7 @@ const taskInclude = {
   statusHistory: {
     orderBy: { changedAt: 'desc' },
     take: 1,
-    select: { fromStatus: true, toStatus: true },
+    select: { fromStatus: true, toStatus: true, changedAt: true },
   },
 };
 
@@ -52,6 +52,10 @@ function withTaskFlags(task) {
       task.status === TASK_STATUS.PROCESSING &&
       latestStatusChange?.fromStatus === TASK_STATUS.PENDING_REVIEW &&
       latestStatusChange?.toStatus === TASK_STATUS.PROCESSING,
+    processingStartedAt:
+      task.status === TASK_STATUS.PROCESSING && latestStatusChange?.toStatus === TASK_STATUS.PROCESSING
+        ? latestStatusChange.changedAt
+        : null,
   };
 }
 
@@ -367,6 +371,7 @@ export const taskService = {
         }
       }
 
+      const statusChangedAt = new Date();
       const updated = await tx.task.update({
         where: { id },
         data:
@@ -386,6 +391,7 @@ export const taskService = {
           toStatus: nextStatus,
           changedBy: actor.id,
           note: note ?? null,
+          changedAt: statusChangedAt,
         },
       });
 
@@ -412,7 +418,7 @@ export const taskService = {
 
       return withTaskFlags({
         ...updated,
-        statusHistory: [{ fromStatus: task.status, toStatus: nextStatus }],
+        statusHistory: [{ fromStatus: task.status, toStatus: nextStatus, changedAt: statusChangedAt }],
       });
     });
   },

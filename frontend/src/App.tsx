@@ -4,6 +4,7 @@ import { HEALTH_URL, ROLE_LABEL } from './api';
 import { useAuth } from './auth';
 import { Spinner } from './ui';
 import { OnshapeConnectButton } from './components/Onshape';
+import ProcessingTimeAlert from './components/ProcessingTimeAlert';
 import Login from './pages/Login';
 import Board from './pages/Board';
 import TaskDetail from './pages/TaskDetail';
@@ -140,7 +141,10 @@ function Layout({ children }: { children: ReactNode }) {
           </nav>
         )}
       </header>
-      <main className="px-3 pt-4 sm:px-4">{children}</main>
+      <main className="px-3 pt-4 sm:px-4">
+        {user?.role === 'admin' && <ProcessingTimeAlert />}
+        {children}
+      </main>
     </div>
   );
 }
