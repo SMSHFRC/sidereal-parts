@@ -195,6 +195,26 @@ export const taskService = {
     return withTaskFlags(task);
   },
 
+  async simulateTimeout(id, actor) {
+    if (actor.role !== ROLES.ADMIN) throw ApiError.forbidden('僅 admin 可模擬加工逾時');
+    const task = await prisma.task.findUnique({ where: { id }, select: { id: true, status: true } });
+    if (!task) throw ApiError.notFound('任務不存在');
+    if (task.status !== TASK_STATUS.PROCESSING) {
+      throw ApiError.badRequest('只有加工中的任務可以模擬逾時', 'TASK_NOT_PROCESSING');
+    }
+    const history = await prisma.taskStatusHistory.findFirst({
+      where: { taskId: id, toStatus: TASK_STATUS.PROCESSING },
+      orderBy: { changedAt: 'desc' },
+      select: { id: true },
+    });
+    if (!history) throw ApiError.badRequest('找不到開始加工紀錄', 'PROCESSING_HISTORY_MISSING');
+    await prisma.taskStatusHistory.update({
+      where: { id: history.id },
+      data: { changedAt: new Date(Date.now() - 31 * 60 * 1000) },
+    });
+    return withTaskFlags(await prisma.task.findUnique({ where: { id }, include: taskInclude }));
+  },
+
   async update(id, data, actor) {
     const task = await prisma.task.findUnique({ where: { id } });
     if (!task) throw ApiError.notFound('任務不存在');

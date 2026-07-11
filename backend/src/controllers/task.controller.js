@@ -18,6 +18,11 @@ export const taskController = {
     res.json({ success: true, data: serialize(result) });
   }),
 
+  simulateTimeout: asyncHandler(async (req, res) => {
+    const result = await taskService.simulateTimeout(req.params.id, req.user);
+    res.json({ success: true, data: serialize(result) });
+  }),
+
   update: asyncHandler(async (req, res) => {
     const result = await taskService.update(req.params.id, req.body, req.user);
     res.json({ success: true, data: serialize(result) });
