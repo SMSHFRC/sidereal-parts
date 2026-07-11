@@ -37,14 +37,15 @@ const taskInclude = {
   postProcessor: { select: { id: true, username: true } },
   statusHistory: {
     orderBy: { changedAt: 'desc' },
-    take: 1,
+    take: 20,
     select: { fromStatus: true, toStatus: true, changedAt: true },
   },
 };
 
 function withTaskFlags(task) {
   if (!task) return task;
-  const latestStatusChange = task.statusHistory?.[0];
+  const latestStatusChange =
+    task.statusHistory?.find((entry) => entry.toStatus === task.status) ?? task.statusHistory?.[0];
   const { statusHistory, ...publicTask } = task;
   return {
     ...publicTask,
