@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertDownloadPermission, downloadSpecForTask } from '../src/utils/taskDownload.js';
-import { downloadFilename, dxfExportPayload } from '../src/services/onshape.service.js';
+import { assertValidDxf, downloadFilename, dxfExportPayload } from '../src/services/onshape.service.js';
 
 const taskFor = (methodCode, materialCode = null) => ({
   manufacturingMethod: { code: methodCode },
@@ -44,5 +44,18 @@ test('DXF uses the direct document export payload for a single top-view part', (
   assert.equal(payload.view, 'top');
   assert.equal(payload.units, 'millimeter');
   assert.equal(payload.sheetMetalFlat, false);
+  assert.equal(payload.zipSingleFileOutput, false);
   assert.equal(payload.configuration, 'default');
+});
+
+test('DXF response validation rejects ZIP and accepts ASCII DXF', () => {
+  assert.doesNotThrow(() => assertValidDxf(Buffer.from('0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nEOF\n')));
+  assert.throws(
+    () => assertValidDxf(Buffer.from([0x50, 0x4b, 0x03, 0x04])),
+    (error) => error.code === 'ONSHAPE_DXF_ZIP',
+  );
+  assert.throws(
+    () => assertValidDxf(Buffer.from('<html>failed</html>')),
+    (error) => error.code === 'ONSHAPE_DXF_INVALID',
+  );
 });

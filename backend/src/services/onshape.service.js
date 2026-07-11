@@ -227,6 +227,7 @@ export const dxfExportPayload = (task) => ({
   sheetMetalFlat: false,
   triggerAutoDownload: true,
   storeInDocument: false,
+  zipSingleFileOutput: false,
   units: 'millimeter',
   partIds: task.onshapePartId,
   ...(task.onshapeConfig ? { configuration: task.onshapeConfig } : {}),
@@ -242,6 +243,18 @@ async function exportDxf(userId, task) {
       body: dxfExportPayload(task),
     },
   );
+}
+
+export function assertValidDxf(buf) {
+  if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) {
+    throw new ApiError(502, 'Onshape 回傳了 ZIP 而不是單一 DXF，請稍後重試', 'ONSHAPE_DXF_ZIP');
+  }
+  const prefix = buf.subarray(0, Math.min(buf.length, 2048)).toString('latin1');
+  const isBinaryDxf = prefix.startsWith('AutoCAD Binary DXF');
+  const isAsciiDxf = /(?:^|\r?\n)\s*SECTION\s*(?:\r?\n|$)/i.test(prefix);
+  if (!isBinaryDxf && !isAsciiDxf) {
+    throw new ApiError(502, 'Onshape 回傳的內容不是有效 DXF', 'ONSHAPE_DXF_INVALID');
+  }
 }
 
 const VENDOR_PART_NUMBER = /^(?:WCP|TTB|REV|SDS|CTR|CTRE|VEX|VEN)[-_]?[A-Z0-9]+|^(?:AM|am)-[A-Z0-9]+|^217-\d+/i;
@@ -853,8 +866,11 @@ export const onshapeService = {
       response = await exportDxf(userId, task);
     }
 
+    const buf = Buffer.from(await response.arrayBuffer());
+    if (spec.format === 'dxf') assertValidDxf(buf);
+
     return {
-      buf: Buffer.from(await response.arrayBuffer()),
+      buf,
       contentType: response.headers.get('content-type') ?? spec.contentType,
       filename: downloadFilename(task, spec.format),
     };
