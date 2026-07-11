@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { downloadSpecForTask } from '../src/utils/taskDownload.js';
+import { assertDownloadPermission, downloadSpecForTask } from '../src/utils/taskDownload.js';
 import { downloadFilename } from '../src/services/onshape.service.js';
 
 const taskFor = (methodCode, materialCode = null) => ({
@@ -23,4 +23,10 @@ test('STL download keeps the imported Onshape part name', () => {
     'Intake Mount.stl',
   );
   assert.equal(downloadFilename({ note: 'Onshape: Front/Plate.stl', partNumber: 'ARM-9999' }, 'stl'), 'Front_Plate.stl');
+});
+
+test('all signed-in members can download task files', () => {
+  const task = { assigneeId: 999n };
+  assert.doesNotThrow(() => assertDownloadPermission(task, { id: 1n, role: 'member' }));
+  assert.doesNotThrow(() => assertDownloadPermission(task, { id: 2n, role: 'admin' }));
 });

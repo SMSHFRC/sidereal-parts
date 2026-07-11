@@ -77,8 +77,7 @@ export default function TaskDetail() {
   const actions = allowedActions(task, user);
   const isOpenPool = task.status === 'pending' && !task.assignee;
   const showClaimPost = canClaimPostProcess(task, user);
-  const downloadSpec =
-    user.role === 'admin' || user.id === task.assigneeId ? getTaskDownloadSpec(task) : null;
+  const downloadSpec = getTaskDownloadSpec(task);
 
   const doAction = async (status: TaskStatus) => {
     if (!window.confirm(confirmFor(task, status, isOpenPool))) return;

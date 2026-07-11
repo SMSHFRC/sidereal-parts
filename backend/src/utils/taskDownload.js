@@ -16,6 +16,6 @@ export function downloadSpecForTask(task) {
 }
 
 export function assertDownloadPermission(task, actor) {
-  if (actor.role === ROLES.ADMIN || String(task.assigneeId) === String(actor.id)) return;
-  throw ApiError.forbidden('只有此任務的加工者或管理員可以下載加工檔案', 'TASK_DOWNLOAD_FORBIDDEN');
+  if ([ROLES.ADMIN, ROLES.MEMBER].includes(actor.role)) return;
+  throw ApiError.forbidden('只有登入成員或管理員可以下載加工檔案', 'TASK_DOWNLOAD_FORBIDDEN');
 }
