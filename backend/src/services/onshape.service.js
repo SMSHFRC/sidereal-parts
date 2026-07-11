@@ -10,7 +10,7 @@ import { parseOnshapeUrl } from '../utils/onshapeUrl.js';
 import { nextPartNumber } from '../utils/partNumber.js';
 import { TASK_STATUS } from '../constants/taskStatus.js';
 import { assertDownloadPermission, downloadSpecForTask } from '../utils/taskDownload.js';
-import { bodyDetailsToDxf } from '../utils/bodyDetailsDxf.js';
+import { assertValidStep, stepToDxf } from '../utils/stepToDxf.js';
 
 const assertEnabled = () => {
   if (!env.onshapeEnabled) {
@@ -211,21 +211,14 @@ const originalPartName = (task) => {
 export const downloadFilename = (task, format) => {
   const base = originalPartName(task)
     .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_')
-    .replace(/\.(?:stl|dxf)$/i, '')
+    .replace(/\.(?:stl|dxf|step|stp)$/i, '')
     .trim();
   return `${base || task.partNumber}.${format}`;
 };
 
-export const dxfExportPayload = (task) => ({
-  format: 'DXF',
+export const stepExportPayload = (task) => ({
+  format: 'STEP',
   destinationName: originalPartName(task),
-  version: '2013',
-  view: 'top',
-  flatten: true,
-  includeBendCenterlines: false,
-  includeBendLines: false,
-  includeSketches: false,
-  sheetMetalFlat: false,
   triggerAutoDownload: true,
   storeInDocument: false,
   zipSingleFileOutput: false,
@@ -234,28 +227,25 @@ export const dxfExportPayload = (task) => ({
   ...(task.onshapeConfig ? { configuration: task.onshapeConfig } : {}),
 });
 
-async function exportDxf(userId, task) {
-  return apiDownloadFetch(
+async function exportStepDxf(userId, task) {
+  const response = await apiDownloadFetch(
     userId,
     `/documents/d/${task.onshapeDid}/${task.onshapeWvm}/${task.onshapeWvmId}/e/${task.onshapeEid}/export`,
     {
       method: 'POST',
-      label: 'Onshape DXF 匯出',
-      body: dxfExportPayload(task),
+      label: 'Onshape STEP 匯出',
+      body: stepExportPayload(task),
     },
   );
-}
-
-async function exportBodyDetailsDxf(userId, task) {
-  const query = new URLSearchParams();
-  if (task.onshapeConfig) query.set('configuration', task.onshapeConfig);
-  const suffix = query.size ? `?${query}` : '';
-  const details = await apiFetch(
-    userId,
-    `/parts/d/${task.onshapeDid}/${task.onshapeWvm}/${task.onshapeWvmId}/e/${task.onshapeEid}/partid/${encodeURIComponent(task.onshapePartId)}/bodydetails${suffix}`,
-    { label: 'Onshape part geometry' },
-  );
-  return bodyDetailsToDxf(details);
+  const stepBuffer = Buffer.from(await response.arrayBuffer());
+  assertValidStep(stepBuffer);
+  try {
+    return await stepToDxf(stepBuffer);
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    console.error('[step to dxf] conversion failed', error);
+    throw new ApiError(422, 'STEP 轉換 DXF 失敗，請確認零件具有可加工的平面', 'STEP_DXF_CONVERSION_FAILED');
+  }
 }
 
 export function assertValidDxf(buf) {
@@ -935,7 +925,7 @@ export const onshapeService = {
       buf = Buffer.from(await response.arrayBuffer());
       contentType = response.headers.get('content-type') ?? spec.contentType;
     } else {
-      buf = await exportBodyDetailsDxf(userId, task);
+      buf = await exportStepDxf(userId, task);
       contentType = spec.contentType;
     }
 

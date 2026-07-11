@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertDownloadPermission, downloadSpecForTask } from '../src/utils/taskDownload.js';
-import { assertValidDxf, downloadFilename, dxfExportPayload } from '../src/services/onshape.service.js';
-import { bodyDetailsToDxf } from '../src/utils/bodyDetailsDxf.js';
+import { assertValidDxf, downloadFilename, stepExportPayload } from '../src/services/onshape.service.js';
 
 const taskFor = (methodCode, materialCode = null) => ({
   manufacturingMethod: { code: methodCode },
@@ -32,19 +31,17 @@ test('all signed-in members can download task files', () => {
   assert.doesNotThrow(() => assertDownloadPermission(task, { id: 2n, role: 'admin' }));
 });
 
-test('DXF uses the direct document export payload for a single top-view part', () => {
-  const payload = dxfExportPayload({
+test('DXF conversion requests a STEP export for one Onshape part', () => {
+  const payload = stepExportPayload({
     note: 'Onshape: indexer-1',
     partNumber: 'ARM-0001',
     onshapePartId: 'JHD',
     onshapeConfig: 'default',
   });
-  assert.equal(payload.format, 'DXF');
+  assert.equal(payload.format, 'STEP');
   assert.equal(payload.destinationName, 'indexer-1');
   assert.equal(payload.partIds, 'JHD');
-  assert.equal(payload.view, 'top');
   assert.equal(payload.units, 'millimeter');
-  assert.equal(payload.sheetMetalFlat, false);
   assert.equal(payload.zipSingleFileOutput, false);
   assert.equal(payload.configuration, 'default');
 });
@@ -59,45 +56,4 @@ test('DXF response validation rejects ZIP and accepts ASCII DXF', () => {
     () => assertValidDxf(Buffer.from('<html>failed</html>')),
     (error) => error.code === 'ONSHAPE_DXF_INVALID',
   );
-});
-
-test('body details convert the largest planar face to an exact DXF outline', () => {
-  const point = (x, y, z = 0) => ({ x, y, z });
-  const line = (id, start, end) => ({
-    id,
-    curve: { type: 'LINE' },
-    geometry: { startPoint: point(...start), endPoint: point(...end) },
-    vertices: ['a', 'b'],
-  });
-  const details = {
-    bodies: [{
-      edges: [
-        line('bottom', [0, 0, 0], [0.1, 0, 0]),
-        line('right', [0.1, 0, 0], [0.1, 0.05, 0]),
-        line('top', [0.1, 0.05, 0], [0, 0.05, 0]),
-        line('left', [0, 0.05, 0], [0, 0, 0]),
-        {
-          id: 'hole',
-          curve: { type: 'CIRCLE', origin: point(0.05, 0.025, 0), radius: 0.005 },
-          geometry: { startPoint: point(0.055, 0.025, 0), endPoint: point(0.055, 0.025, 0), arcSweep: Math.PI * 2 },
-          vertices: [],
-        },
-      ],
-      faces: [{
-        area: 0.005,
-        surface: { type: 'PLANE', origin: point(0, 0, 0), normal: point(0, 0, 1) },
-        loops: [
-          { isOuter: true, coedges: ['bottom', 'right', 'top', 'left'].map((edgeId) => ({ edgeId, orientation: true })) },
-          { isInner: true, coedges: [{ edgeId: 'hole', orientation: true }] },
-        ],
-      }],
-    }],
-  };
-
-  const dxf = bodyDetailsToDxf(details);
-  const text = dxf.toString('ascii');
-  assert.match(text, /\n0\nLINE\n/);
-  assert.match(text, /\n0\nCIRCLE\n/);
-  assert.match(text, /\n40\n5\n/);
-  assert.doesNotThrow(() => assertValidDxf(dxf));
 });
