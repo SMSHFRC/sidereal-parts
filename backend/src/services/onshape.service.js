@@ -10,6 +10,7 @@ import { parseOnshapeUrl } from '../utils/onshapeUrl.js';
 import { nextPartNumber } from '../utils/partNumber.js';
 import { TASK_STATUS } from '../constants/taskStatus.js';
 import { assertDownloadPermission, downloadSpecForTask } from '../utils/taskDownload.js';
+import { bodyDetailsToDxf } from '../utils/bodyDetailsDxf.js';
 
 const assertEnabled = () => {
   if (!env.onshapeEnabled) {
@@ -243,6 +244,18 @@ async function exportDxf(userId, task) {
       body: dxfExportPayload(task),
     },
   );
+}
+
+async function exportBodyDetailsDxf(userId, task) {
+  const query = new URLSearchParams();
+  if (task.onshapeConfig) query.set('configuration', task.onshapeConfig);
+  const suffix = query.size ? `?${query}` : '';
+  const details = await apiFetch(
+    userId,
+    `/parts/d/${task.onshapeDid}/${task.onshapeWvm}/${task.onshapeWvmId}/e/${task.onshapeEid}/partid/${encodeURIComponent(task.onshapePartId)}/bodydetails${suffix}`,
+    { label: 'Onshape part geometry' },
+  );
+  return bodyDetailsToDxf(details);
 }
 
 export function assertValidDxf(buf) {
@@ -854,6 +867,8 @@ export const onshapeService = {
     }
 
     let response;
+    let buf;
+    let contentType;
     if (spec.format === 'stl') {
       const query = new URLSearchParams({ mode: 'binary', grouping: 'true', scale: '1', units: 'millimeter' });
       if (task.onshapeConfig) query.set('configuration', task.onshapeConfig);
@@ -862,16 +877,18 @@ export const onshapeService = {
         `/parts/d/${task.onshapeDid}/${task.onshapeWvm}/${task.onshapeWvmId}/e/${task.onshapeEid}/partid/${encodeURIComponent(task.onshapePartId)}/stl?${query}`,
         { label: 'Onshape STL 下載' },
       );
+      buf = Buffer.from(await response.arrayBuffer());
+      contentType = response.headers.get('content-type') ?? spec.contentType;
     } else {
-      response = await exportDxf(userId, task);
+      buf = await exportBodyDetailsDxf(userId, task);
+      contentType = spec.contentType;
     }
 
-    const buf = Buffer.from(await response.arrayBuffer());
     if (spec.format === 'dxf') assertValidDxf(buf);
 
     return {
       buf,
-      contentType: response.headers.get('content-type') ?? spec.contentType,
+      contentType,
       filename: downloadFilename(task, spec.format),
     };
   },
