@@ -234,6 +234,20 @@ export interface OnshapeImportItem {
   materialId?: number | null;
   postProcessId?: number | null;
   quantity?: number;
+  assigneeId?: string | null; // 逐件指派（僅 admin）
+}
+
+// 此組合（assembly）加工進度
+export interface AssemblyProgress {
+  progress: TaskProgress;
+  tasks: Array<{
+    id: string;
+    partNumber: string;
+    note: string | null;
+    status: TaskStatus;
+    quantity: number;
+    assignee: { username: string } | null;
+  }>;
 }
 
 export interface OnshapeImportPreview {
@@ -571,6 +585,10 @@ export const onshapeApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  assemblyProgress: (r: { did: string; wvm: string; wvmId: string; eid: string }) =>
+    api<AssemblyProgress>(
+      `/onshape/assembly-progress?did=${r.did}&wvm=${r.wvm}&wvmId=${r.wvmId}&eid=${r.eid}`,
+    ),
   importItems: (
     options: {
       kind?: 'cots' | 'skipped' | 'all';

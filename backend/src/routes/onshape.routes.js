@@ -31,6 +31,7 @@ router.post('/import', validate(importBomSchema), onshapeController.importBom);
 router.get('/thumbnail', validate(elementRefSchema), onshapeController.thumbnail); // element 縮圖代理
 router.get('/part-thumbnail', validate(partThumbnailSchema), onshapeController.partThumbnail); // 單一零件縮圖
 router.get('/import-items', validate(importItemsQuerySchema), onshapeController.importItems); // COTS/跳過清單
+router.get('/assembly-progress', validate(elementRefSchema), onshapeController.assemblyProgress); // 此組合加工進度
 
 router.patch('/import-items/:id', validate(updateImportItemSchema), onshapeController.updateImportItem);
 

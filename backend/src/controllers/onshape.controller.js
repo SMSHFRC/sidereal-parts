@@ -50,7 +50,7 @@ export const onshapeController = {
   }),
 
   importBom: asyncHandler(async (req, res) => {
-    const result = await onshapeService.importBom(req.user.id, req.body);
+    const result = await onshapeService.importBom(req.user.id, req.body, req.user);
     res.status(201).json({ success: true, data: serialize(result) });
   }),
 
@@ -59,6 +59,11 @@ export const onshapeController = {
     res.set('Content-Type', contentType);
     res.set('Cache-Control', 'private, max-age=300'); // 縮圖 5 分鐘快取
     res.send(buf);
+  }),
+
+  assemblyProgress: asyncHandler(async (req, res) => {
+    const result = await onshapeService.assemblyProgress(req.validatedQuery);
+    res.json({ success: true, data: serialize(result) });
   }),
 
   importItems: asyncHandler(async (req, res) => {

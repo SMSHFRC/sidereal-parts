@@ -538,7 +538,12 @@ export const onshapeService = {
     return makeImportPreview(userId, url);
   },
 
-  async importBom(userId, { url, systemId, robotId, subsystemId, manufacturingMethodId, materialId, postProcessId, items }) {
+  async importBom(userId, { url, systemId, robotId, subsystemId, manufacturingMethodId, materialId, postProcessId, items }, actor) {
+    // 逐件指派僅 admin（與接單制一致）；先於任何外部呼叫檢查
+    const wantsAssign = (items ?? []).some((it) => it.assigneeId != null);
+    if (wantsAssign && actor?.role !== 'admin') {
+      throw ApiError.forbidden('僅管理員可於匯入時指派零件');
+    }
     const preview = await makeImportPreview(userId, url);
     let robotScope = {};
     let resolvedSystemId = systemId;
@@ -600,6 +605,7 @@ export const onshapeService = {
         materialOverride: ov?.materialId ?? materialId ?? null,
         itemPostProcessId: ov?.postProcessId ?? postProcessId ?? null,
         quantity: Math.max(1, Number(ov?.quantity ?? row.quantity) || 1),
+        itemAssigneeId: ov?.assigneeId ?? null,
       });
     }
 
@@ -625,6 +631,18 @@ export const onshapeService = {
     const basePointsOf = (id) => methodRows.find((m) => m.id === id)?.basePoints ?? 5;
     for (const id of postIds) if (!has(postRows, id)) throw ApiError.badRequest('後處理方式不存在');
     for (const id of matIds) if (!has(matRows, id)) throw ApiError.badRequest('材料不存在');
+
+    // 逐件指派對象需為啟用中的 member
+    const assigneeIds = [...new Set(madePlan.map((p) => p.itemAssigneeId).filter((v) => v != null))];
+    if (assigneeIds.length) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: assigneeIds }, isActive: true, role: { name: 'member' } },
+        select: { id: true },
+      });
+      for (const id of assigneeIds) {
+        if (!users.some((u) => u.id === id)) throw ApiError.badRequest('指派的隊員不存在或已停用');
+      }
+    }
 
     const thumbnailUrl = preview.thumbnailPath;
     const imageMeta = thumbnailUrl
@@ -685,6 +703,8 @@ export const onshapeService = {
           onshapeThumbnailUrl: thumbnailUrl,
           onshapeImageMeta: imageMeta,
           importBatchId: batch.id,
+          // 逐件指派（僅 admin 會帶到這裡；null = 進任務池）
+          assigneeId: plan.itemAssigneeId ?? null,
           note:
             [
               item.name ? `Onshape: ${item.name}` : null,
@@ -704,6 +724,8 @@ export const onshapeService = {
               materialId: taskData.materialId,
               robotId: taskData.robotId,
               subsystemId: taskData.subsystemId,
+              // 既有任務僅在有明確指派時更新（避免把已接單的清掉）
+              ...(plan.itemAssigneeId != null ? { assigneeId: plan.itemAssigneeId } : {}),
               postProcessId: taskData.postProcessId,
               drawingUrl: taskData.drawingUrl,
               onshapeWvm: taskData.onshapeWvm,
@@ -786,6 +808,39 @@ export const onshapeService = {
   // COTS / 跳過零件清單（登入即可查）
   // COTS / skipped imported rows. These are scoped to systems/subsystems so they
   // can be used as a real collection checklist instead of a throwaway import log.
+  // 此組合（assembly）的加工進度：統計所有從這個 document+element 匯入的任務
+  async assemblyProgress({ did, eid }) {
+    const where = { importBatch: { documentId: did, elementId: eid } };
+    const [grouped, tasks] = await Promise.all([
+      prisma.task.groupBy({ by: ['status'], where, _count: { _all: true } }),
+      prisma.task.findMany({
+        where,
+        orderBy: { id: 'desc' },
+        take: 100,
+        select: {
+          id: true,
+          partNumber: true,
+          note: true,
+          status: true,
+          quantity: true,
+          assignee: { select: { username: true } },
+        },
+      }),
+    ]);
+    const b = { pending: 0, active: 0, done: 0 };
+    for (const g of grouped) {
+      if (g.status === 'pending') b.pending += g._count._all;
+      else if (g.status === 'completed') b.done += g._count._all;
+      else if (['accepted', 'processing', 'pending_review', 'post_processing'].includes(g.status))
+        b.active += g._count._all;
+    }
+    const total = b.pending + b.active + b.done;
+    return {
+      progress: { ...b, total, percent: total ? Math.round((b.done / total) * 100) : 0 },
+      tasks,
+    };
+  },
+
   async listImportItems({ kind, systemId, robotId, subsystemId, collected, page, limit }) {
     const where = {
       ...(kind && kind !== 'all' ? { kind } : {}),

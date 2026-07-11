@@ -31,6 +31,7 @@ const importItem = z.object({
   materialId: z.coerce.number().int().positive().nullable().optional(),
   postProcessId: z.coerce.number().int().positive().nullable().optional(),
   quantity: z.coerce.number().int().positive().max(100000).optional(),
+  assigneeId: z.coerce.bigint().nullable().optional(), // 逐件指派（僅 admin）
 });
 
 const importBaseBody = z.object({
