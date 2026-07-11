@@ -615,6 +615,8 @@ export const onshapeService = {
       // COTS 與跳過的零件都保存（kind 區分），供之後在網站檢視
       const toItemRow = (item, kind) => ({
         batchId: batch.id,
+        systemId: resolvedSystemId,
+        ...robotScope,
         kind,
         name: item.name,
         partNumber: item.partNumber,
@@ -651,21 +653,66 @@ export const onshapeService = {
   },
 
   // COTS / 跳過零件清單（登入即可查）
-  async listImportItems({ kind, page, limit }) {
-    const where = kind && kind !== 'all' ? { kind } : {};
+  // COTS / skipped imported rows. These are scoped to systems/subsystems so they
+  // can be used as a real collection checklist instead of a throwaway import log.
+  async listImportItems({ kind, systemId, robotId, subsystemId, collected, page, limit }) {
+    const where = {
+      ...(kind && kind !== 'all' ? { kind } : {}),
+      ...(systemId ? { systemId } : {}),
+      ...(robotId ? { robotId } : {}),
+      ...(subsystemId ? { subsystemId } : {}),
+      ...(collected === 'open' ? { isCollected: false } : {}),
+      ...(collected === 'done' ? { isCollected: true } : {}),
+    };
     const [items, total] = await Promise.all([
       prisma.cotsItem.findMany({
         where,
         include: {
           batch: { select: { documentName: true, sourceUrl: true, createdAt: true } },
+          system: { select: { id: true, code: true, name: true } },
+          robot: { select: { id: true, code: true, name: true } },
+          subsystem: { select: { id: true, robotId: true, code: true, name: true } },
         },
-        orderBy: { id: 'desc' },
+        orderBy: [{ isCollected: 'asc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
       }),
       prisma.cotsItem.count({ where }),
     ]);
     return { items, page, limit, total };
+  },
+
+  async updateImportItem(id, data) {
+    const item = await prisma.cotsItem.findUnique({ where: { id } });
+    if (!item) throw ApiError.notFound('找不到此 COTS 零件');
+
+    const nextCollectedQuantity =
+      data.collectedQuantity != null
+        ? data.collectedQuantity
+        : data.isCollected === true
+          ? item.quantity
+          : item.collectedQuantity;
+    const boundedCollectedQuantity = Math.min(Math.max(0, nextCollectedQuantity), Math.max(0, item.quantity));
+    const nextIsCollected =
+      data.isCollected != null
+        ? data.isCollected
+        : item.quantity > 0 && boundedCollectedQuantity >= item.quantity;
+
+    return prisma.cotsItem.update({
+      where: { id },
+      data: {
+        collectedQuantity: nextIsCollected ? Math.max(item.quantity, boundedCollectedQuantity) : boundedCollectedQuantity,
+        isCollected: nextIsCollected,
+        collectedAt: nextIsCollected ? item.collectedAt ?? new Date() : null,
+        ...(Object.prototype.hasOwnProperty.call(data, 'note') ? { note: data.note ?? null } : {}),
+      },
+      include: {
+        batch: { select: { documentName: true, sourceUrl: true, createdAt: true } },
+        system: { select: { id: true, code: true, name: true } },
+        robot: { select: { id: true, code: true, name: true } },
+        subsystem: { select: { id: true, robotId: true, code: true, name: true } },
+      },
+    });
   },
 
   // 縮圖代理：Onshape 縮圖端點需帶授權，前端 <img> 無法直接取

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 const hex24 = z.string().regex(/^[0-9a-f]{24}$/i, '格式錯誤');
+const bigintId = z.coerce.bigint();
+const intId = z.coerce.number().int().positive();
 
 // did/wvm/wvmId/eid 皆必填的元素參照
 const elementRef = z.object({
@@ -55,7 +57,26 @@ export const importBomSchema = { body: importBody };
 export const importItemsQuerySchema = {
   query: z.object({
     kind: z.enum(['cots', 'skipped', 'all']).default('all'),
+    systemId: intId.optional(),
+    robotId: bigintId.optional(),
+    subsystemId: bigintId.optional(),
+    collected: z.enum(['all', 'open', 'done']).default('all'),
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(200).default(50),
   }),
+};
+
+export const importItemIdSchema = {
+  params: z.object({ id: bigintId }),
+};
+
+export const updateImportItemSchema = {
+  ...importItemIdSchema,
+  body: z
+    .object({
+      collectedQuantity: z.coerce.number().int().min(0).max(100000).optional(),
+      isCollected: z.boolean().optional(),
+      note: z.string().trim().max(1000).nullable().optional(),
+    })
+    .refine((v) => Object.keys(v).length > 0, { message: '沒有要更新的欄位' }),
 };

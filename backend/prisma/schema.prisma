@@ -79,11 +79,18 @@ model OnshapeImportBatch {
 model CotsItem {
   id          BigInt   @id @default(autoincrement())
   batchId     BigInt   @map("batch_id")
+  systemId    Int?     @map("system_id")
+  robotId     BigInt?  @map("robot_id")
+  subsystemId BigInt?  @map("subsystem_id")
   kind        String   @default("cots") // 'cots' | 'skipped'
   name        String?
   partNumber  String?  @map("part_number")
   quantity    Int      @default(0)
+  collectedQuantity Int @default(0) @map("collected_quantity")
+  isCollected Boolean  @default(false) @map("is_collected")
+  collectedAt DateTime? @map("collected_at")
   material    String?
+  note        String?
   sourceDocumentId String? @map("source_document_id")
   sourceElementId  String? @map("source_element_id")
   thumbnailUrl String? @map("thumbnail_url")
@@ -91,9 +98,16 @@ model CotsItem {
   createdAt   DateTime @default(now()) @map("created_at")
 
   batch OnshapeImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  system System? @relation(fields: [systemId], references: [id])
+  robot Robot? @relation(fields: [robotId], references: [id])
+  subsystem RobotSubsystem? @relation(fields: [subsystemId], references: [id])
 
   @@index([batchId])
+  @@index([systemId])
+  @@index([robotId])
+  @@index([subsystemId])
   @@index([kind])
+  @@index([isCollected])
   @@map("cots_items")
 }
 
@@ -134,6 +148,7 @@ model System {
   isActive Boolean @default(true) @map("is_active")
   tasks    Task[]
   subsystems RobotSubsystem[]
+  cotsItems CotsItem[]
 
   @@map("systems")
 }
@@ -149,6 +164,7 @@ model Robot {
 
   subsystems RobotSubsystem[]
   tasks      Task[]
+  cotsItems  CotsItem[]
 
   @@map("robots")
 }
@@ -167,6 +183,7 @@ model RobotSubsystem {
   robot Robot @relation(fields: [robotId], references: [id], onDelete: Cascade)
   system System? @relation(fields: [systemId], references: [id])
   tasks Task[]
+  cotsItems CotsItem[]
 
   @@unique([robotId, code])
   @@index([robotId])

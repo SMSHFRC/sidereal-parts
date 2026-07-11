@@ -234,7 +234,14 @@ export interface ImportItemRow {
   name: string | null;
   partNumber: string | null;
   quantity: number;
+  collectedQuantity: number;
+  isCollected: boolean;
+  collectedAt: string | null;
   material: string | null;
+  note: string | null;
+  system: OptionRef | null;
+  robot: RobotRef | null;
+  subsystem: SubsystemRef | null;
   createdAt: string;
   batch?: { documentName: string | null; sourceUrl: string; createdAt: string };
 }
@@ -494,8 +501,35 @@ export const onshapeApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  importItems: (kind: 'cots' | 'skipped' | 'all' = 'all', page = 1) =>
-    api<Paged<ImportItemRow>>(`/onshape/import-items?kind=${kind}&page=${page}&limit=100`),
+  importItems: (
+    options: {
+      kind?: 'cots' | 'skipped' | 'all';
+      collected?: 'all' | 'open' | 'done';
+      systemId?: number;
+      robotId?: string;
+      subsystemId?: string;
+      page?: number;
+    } = {},
+  ) => {
+    const q = new URLSearchParams({
+      kind: options.kind ?? 'all',
+      collected: options.collected ?? 'all',
+      page: String(options.page ?? 1),
+      limit: '100',
+    });
+    if (options.systemId) q.set('systemId', String(options.systemId));
+    if (options.robotId) q.set('robotId', options.robotId);
+    if (options.subsystemId) q.set('subsystemId', options.subsystemId);
+    return api<Paged<ImportItemRow>>(`/onshape/import-items?${q}`);
+  },
+  updateImportItem: (
+    id: string,
+    input: { collectedQuantity?: number; isCollected?: boolean; note?: string | null },
+  ) =>
+    api<ImportItemRow>(`/onshape/import-items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
 };
 
 /** 縮圖需帶 JWT，<img src> 無法帶 header → fetch blob 轉 object URL。

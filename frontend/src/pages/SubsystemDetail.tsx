@@ -60,12 +60,20 @@ export default function SubsystemDetail() {
           <h1 className="text-xl font-bold text-slate-900">{subsystem.name}</h1>
           {subsystem.note && <p className="mt-1 text-sm text-slate-500">{subsystem.note}</p>}
         </div>
-        <Link
-          to={`/import?robotId=${subsystem.robotId}&subsystemId=${subsystem.id}`}
-          className="min-h-11 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-        >
-          匯入 BOM
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to={`/import-items?robotId=${subsystem.robotId}&subsystemId=${subsystem.id}`}
+            className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+          >
+            COTS 清單
+          </Link>
+          <Link
+            to={`/import?robotId=${subsystem.robotId}&subsystemId=${subsystem.id}`}
+            className="min-h-11 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+          >
+            匯入 BOM
+          </Link>
+        </div>
       </div>
 
       {/* 完成度 */}
