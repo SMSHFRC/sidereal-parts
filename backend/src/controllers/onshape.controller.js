@@ -59,6 +59,11 @@ export const onshapeController = {
     res.send(buf);
   }),
 
+  importItems: asyncHandler(async (req, res) => {
+    const result = await onshapeService.listImportItems(req.validatedQuery);
+    res.json({ success: true, data: serialize(result) });
+  }),
+
   partThumbnail: asyncHandler(async (req, res) => {
     const { buf, contentType } = await onshapeService.partThumbnail(req.user.id, req.validatedQuery);
     res.set('Content-Type', contentType);

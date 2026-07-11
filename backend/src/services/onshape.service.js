@@ -443,12 +443,16 @@ export const onshapeService = {
     // 先決定每列最終分類與設定並驗證
     const madePlan = [];
     const cotsPlan = [];
+    const skippedPlan = []; // 明確跳過的零件也落地保存，供之後檢視
     const missingMethod = [];
     for (const row of allRows) {
       const ov = overrides.get(row.rowKey);
-      if (ov?.classification === 'skip') continue;
+      if (ov?.classification === 'skip') {
+        skippedPlan.push(row);
+        continue;
+      }
       const cls = ov?.classification ?? row.classification;
-      if (cls === 'unknown') continue; // 未分類且未指定 → 略過（需人工判斷）
+      if (cls === 'unknown') continue; // 未分類且未指定 → 不處理（需人工判斷）
       if (cls === 'cots') {
         cotsPlan.push(row);
         continue;
@@ -507,6 +511,7 @@ export const onshapeService = {
         data: {
           userId,
           sourceUrl: url,
+          documentName: preview.documentName ?? null,
           documentId: preview.ref.did,
           wvm: preview.ref.wvm,
           wvmId: preview.ref.wvmId,
@@ -607,20 +612,25 @@ export const onshapeService = {
         }
       }
 
-      if (cotsPlan.length) {
-        await tx.cotsItem.createMany({
-          data: cotsPlan.map((item) => ({
-            batchId: batch.id,
-            name: item.name,
-            partNumber: item.partNumber,
-            quantity: Math.max(0, Number(item.quantity) || 0),
-            material: item.material,
-            sourceDocumentId: item.sourceDocumentId,
-            sourceElementId: item.sourceElementId,
-            thumbnailUrl,
-            raw: item,
-          })),
-        });
+      // COTS 與跳過的零件都保存（kind 區分），供之後在網站檢視
+      const toItemRow = (item, kind) => ({
+        batchId: batch.id,
+        kind,
+        name: item.name,
+        partNumber: item.partNumber,
+        quantity: Math.max(0, Number(item.quantity) || 0),
+        material: item.material,
+        sourceDocumentId: item.sourceDocumentId,
+        sourceElementId: item.sourceElementId,
+        thumbnailUrl,
+        raw: item,
+      });
+      const itemRows = [
+        ...cotsPlan.map((i) => toItemRow(i, 'cots')),
+        ...skippedPlan.map((i) => toItemRow(i, 'skipped')),
+      ];
+      if (itemRows.length) {
+        await tx.cotsItem.createMany({ data: itemRows });
       }
 
       return { batch, created, updated };
@@ -631,12 +641,31 @@ export const onshapeService = {
       created: result.created.length,
       updated: result.updated.length,
       cotsCount: cotsPlan.length,
+      skippedCount: skippedPlan.length,
       imageCount: preview.summary.imageCount,
       imageFailedCount: preview.summary.imageFailedCount,
       tasks: [...result.created, ...result.updated],
       cots: cotsPlan,
       documentName: preview.documentName,
     };
+  },
+
+  // COTS / 跳過零件清單（登入即可查）
+  async listImportItems({ kind, page, limit }) {
+    const where = kind && kind !== 'all' ? { kind } : {};
+    const [items, total] = await Promise.all([
+      prisma.cotsItem.findMany({
+        where,
+        include: {
+          batch: { select: { documentName: true, sourceUrl: true, createdAt: true } },
+        },
+        orderBy: { id: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.cotsItem.count({ where }),
+    ]);
+    return { items, page, limit, total };
   },
 
   // 縮圖代理：Onshape 縮圖端點需帶授權，前端 <img> 無法直接取

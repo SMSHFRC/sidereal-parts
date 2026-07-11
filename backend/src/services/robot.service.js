@@ -57,17 +57,58 @@ async function uniqueSubsystemCode(tx, robotId, desired) {
   return `SUBSYS_${Date.now().toString(36).toUpperCase()}`.slice(0, 32);
 }
 
+// 依 systemId 統計任務狀態，附到每個 subsystem 上（進度顯示用）
+// pending=待接單、active=進行中(accepted/processing/pending_review/post_processing)、
+// done=completed；cancelled 不列入分母。percent = done/total。
+async function attachProgress(robots) {
+  const list = Array.isArray(robots) ? robots : [robots];
+  const systemIds = list.flatMap((r) => r.subsystems.map((s) => s.systemId)).filter(Boolean);
+  if (systemIds.length === 0) return robots;
+
+  const grouped = await prisma.task.groupBy({
+    by: ['systemId', 'status'],
+    where: { systemId: { in: systemIds } },
+    _count: { _all: true },
+  });
+  const bySystem = new Map();
+  for (const g of grouped) {
+    const bucket = bySystem.get(g.systemId) ?? { pending: 0, active: 0, done: 0 };
+    if (g.status === 'pending') bucket.pending += g._count._all;
+    else if (g.status === 'completed') bucket.done += g._count._all;
+    else if (['accepted', 'processing', 'pending_review', 'post_processing'].includes(g.status))
+      bucket.active += g._count._all;
+    bySystem.set(g.systemId, bucket);
+  }
+
+  for (const robot of list) {
+    const sum = { pending: 0, active: 0, done: 0 };
+    for (const sub of robot.subsystems) {
+      const b = bySystem.get(sub.systemId) ?? { pending: 0, active: 0, done: 0 };
+      const total = b.pending + b.active + b.done;
+      sub.progress = { ...b, total, percent: total ? Math.round((b.done / total) * 100) : 0 };
+      sum.pending += b.pending;
+      sum.active += b.active;
+      sum.done += b.done;
+    }
+    const total = sum.pending + sum.active + sum.done;
+    robot.progress = { ...sum, total, percent: total ? Math.round((sum.done / total) * 100) : 0 };
+  }
+  return robots;
+}
+
 export const robotService = {
-  list() {
-    return prisma.robot.findMany({
+  async list() {
+    const robots = await prisma.robot.findMany({
       orderBy: { id: 'desc' },
       include: robotInclude,
     });
+    return attachProgress(robots);
   },
 
   async get(id) {
     const robot = await prisma.robot.findUnique({ where: { id }, include: robotInclude });
     if (!robot) throw ApiError.notFound('找不到此機器人');
+    await attachProgress(robot);
     return robot;
   },
 

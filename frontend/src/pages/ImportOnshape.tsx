@@ -367,6 +367,7 @@ export default function ImportOnshape() {
               <h2 className="text-sm font-semibold text-emerald-900">匯入完成</h2>
               <p className="mt-1 text-sm text-emerald-800">
                 新增 {result.created}，更新 {result.updated}，COTS {result.cotsCount}
+                {result.skippedCount ? `，跳過 ${result.skippedCount}` : ''}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {result.tasks.map((task) => (

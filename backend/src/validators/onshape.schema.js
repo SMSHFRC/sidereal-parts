@@ -50,3 +50,12 @@ const importBody = importBaseBody.refine((v) => v.systemId || v.subsystemId, {
 
 export const importPreviewSchema = { body: importBaseBody.pick({ url: true }) };
 export const importBomSchema = { body: importBody };
+
+// COTS / 跳過零件清單
+export const importItemsQuerySchema = {
+  query: z.object({
+    kind: z.enum(['cots', 'skipped', 'all']).default('all'),
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(200).default(50),
+  }),
+};

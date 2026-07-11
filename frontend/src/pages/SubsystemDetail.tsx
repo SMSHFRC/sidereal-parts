@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, robotApi, type RobotSubsystem, type Task } from '../api';
 import { Empty, ErrorBox, Spinner, StatusBadge } from '../ui';
+import { ProgressBar } from './Robots';
 
 const GROUPS = [
   { key: 'pending', title: '待接單', match: (t: Task) => t.status === 'pending' },
@@ -65,6 +66,11 @@ export default function SubsystemDetail() {
         >
           匯入 BOM
         </Link>
+      </div>
+
+      {/* 完成度 */}
+      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <ProgressBar p={subsystem.progress} />
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-3">

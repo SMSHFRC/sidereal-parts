@@ -114,6 +114,15 @@ export interface SubsystemRef {
   name: string;
 }
 
+// 任務進度統計（後端 attachProgress 附上）
+export interface TaskProgress {
+  pending: number; // 還沒接
+  active: number; // 進行中
+  done: number; // 已完成
+  total: number;
+  percent: number; // 完成度 0-100
+}
+
 export interface Robot extends RobotRef {
   note: string | null;
   isActive: boolean;
@@ -121,6 +130,7 @@ export interface Robot extends RobotRef {
   updatedAt: string;
   subsystems: RobotSubsystem[];
   _count?: { tasks: number };
+  progress?: TaskProgress;
 }
 
 export interface RobotSubsystem extends SubsystemRef {
@@ -131,6 +141,7 @@ export interface RobotSubsystem extends SubsystemRef {
   robot?: RobotRef;
   system?: { id: number; code: string; name: string } | null;
   _count?: { tasks: number };
+  progress?: TaskProgress;
 }
 
 // ---------- M3: Onshape ----------
@@ -208,11 +219,24 @@ export interface OnshapeImportResult {
   created: number;
   updated: number;
   cotsCount: number;
+  skippedCount?: number;
   imageCount: number;
   imageFailedCount: number;
   documentName: string;
   tasks: Array<{ id: string; partNumber: string; status: TaskStatus }>;
   cots: OnshapeBomItem[];
+}
+
+// COTS / 跳過零件（匯入時落地保存的非自製列）
+export interface ImportItemRow {
+  id: string;
+  kind: 'cots' | 'skipped';
+  name: string | null;
+  partNumber: string | null;
+  quantity: number;
+  material: string | null;
+  createdAt: string;
+  batch?: { documentName: string | null; sourceUrl: string; createdAt: string };
 }
 
 export interface Me {
@@ -470,6 +494,8 @@ export const onshapeApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  importItems: (kind: 'cots' | 'skipped' | 'all' = 'all', page = 1) =>
+    api<Paged<ImportItemRow>>(`/onshape/import-items?kind=${kind}&page=${page}&limit=100`),
 };
 
 /** 縮圖需帶 JWT，<img src> 無法帶 header → fetch blob 轉 object URL。

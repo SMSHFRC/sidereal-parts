@@ -59,6 +59,7 @@ model OnshapeImportBatch {
   id        BigInt   @id @default(autoincrement())
   userId    BigInt   @map("user_id")
   sourceUrl String   @map("source_url")
+  documentName String? @map("document_name")
   documentId String  @map("document_id")
   wvm       String
   wvmId     String   @map("wvm_id")
@@ -78,6 +79,7 @@ model OnshapeImportBatch {
 model CotsItem {
   id          BigInt   @id @default(autoincrement())
   batchId     BigInt   @map("batch_id")
+  kind        String   @default("cots") // 'cots' | 'skipped'
   name        String?
   partNumber  String?  @map("part_number")
   quantity    Int      @default(0)
@@ -91,6 +93,7 @@ model CotsItem {
   batch OnshapeImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([batchId])
+  @@index([kind])
   @@map("cots_items")
 }
 

@@ -1,11 +1,32 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiError, robotApi, type Robot } from '../api';
+import { ApiError, robotApi, type Robot, type TaskProgress } from '../api';
 import { useAuth } from '../auth';
 import { Empty, ErrorBox, Spinner } from '../ui';
 
 const inputCls =
   'min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-base outline-none focus:border-slate-900';
+
+// 完成度條 + 未接/進行/完成 統計
+export function ProgressBar({ p }: { p?: TaskProgress }) {
+  if (!p || p.total === 0) {
+    return <p className="mt-1 text-xs text-slate-400">尚無任務</p>;
+  }
+  return (
+    <div className="mt-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-slate-500">
+          待接 {p.pending} · 進行 {p.active} · 完成 {p.done}
+        </span>
+        <span className="font-semibold text-slate-800">{p.percent}%</span>
+      </div>
+      <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className="bg-emerald-500" style={{ width: `${(p.done / p.total) * 100}%` }} />
+        <div className="bg-indigo-400" style={{ width: `${(p.active / p.total) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
 
 export default function Robots() {
   const { user } = useAuth();
@@ -116,6 +137,8 @@ export default function Robots() {
                 <span className="text-xs text-slate-500">{robot.subsystems.length} 個子系統</span>
               </div>
 
+              <ProgressBar p={robot.progress} />
+
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {robot.subsystems.map((sub) => (
                   <Link
@@ -126,7 +149,7 @@ export default function Robots() {
                     <p className="font-medium text-slate-900">
                       {sub.name}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">{sub._count?.tasks ?? 0} 個任務</p>
+                    <ProgressBar p={sub.progress} />
                   </Link>
                 ))}
               </div>

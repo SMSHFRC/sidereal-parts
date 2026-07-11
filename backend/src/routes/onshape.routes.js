@@ -6,6 +6,7 @@ import {
   resolveSchema,
   elementRefSchema,
   partThumbnailSchema,
+  importItemsQuerySchema,
   importPreviewSchema,
   importBomSchema,
 } from '../validators/onshape.schema.js';
@@ -28,5 +29,6 @@ router.post('/import/preview', validate(importPreviewSchema), onshapeController.
 router.post('/import', validate(importBomSchema), onshapeController.importBom);
 router.get('/thumbnail', validate(elementRefSchema), onshapeController.thumbnail); // element 縮圖代理
 router.get('/part-thumbnail', validate(partThumbnailSchema), onshapeController.partThumbnail); // 單一零件縮圖
+router.get('/import-items', validate(importItemsQuerySchema), onshapeController.importItems); // COTS/跳過清單
 
 export default router;
