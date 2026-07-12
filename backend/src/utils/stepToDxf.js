@@ -117,6 +117,49 @@ function sampleCurve(curve) {
 
 const samePoint = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6;
 const closePoint = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= POINT_JOIN_TOLERANCE_MM;
+const closeNumber = (a, b, tolerance = 0.05) => Math.abs(a - b) <= tolerance;
+
+function circleGeometryFromEdge(edge, project) {
+  if (edge.geomType !== 'CIRCLE') return null;
+  const curve = edge.curve;
+  try {
+    const circle = curve.wrapped.Circle();
+    try {
+      const location = circle.Location();
+      try {
+        return {
+          center: project([location.X(), location.Y(), location.Z()]),
+          radius: circle.Radius(),
+        };
+      } finally {
+        location.delete();
+      }
+    } finally {
+      circle.delete();
+    }
+  } finally {
+    curve.delete();
+  }
+}
+
+function circleFromWire(wire, project) {
+  if (!wire.isClosed) return null;
+  const edges = wire.edges;
+  try {
+    if (!edges.length || edges.some((edge) => edge.geomType !== 'CIRCLE')) return null;
+    const circles = edges.map((edge) => circleGeometryFromEdge(edge, project));
+    if (circles.some((circle) => !circle)) return null;
+    const [first] = circles;
+    const sameCircle = circles.every((circle) => (
+      closeNumber(circle.radius, first.radius)
+      && closePoint(circle.center, first.center)
+    ));
+    if (!sameCircle || first.radius <= 0) return null;
+    return { kind: 'circle', center: first.center, radius: first.radius };
+  } finally {
+    edges.forEach((edge) => edge.delete());
+  }
+}
 
 function sampleEdge(edge, project) {
   const curve = edge.curve;
@@ -202,9 +245,12 @@ function orderedWirePoints(wire, project) {
 }
 
 function wireToPoints(wire, project) {
+  const circle = circleFromWire(wire, project);
+  if (circle) return circle;
+
   try {
     const edgePoints = orderedWirePoints(wire, project);
-    if (edgePoints.length >= 3) return edgePoints;
+    if (edgePoints.length >= 3) return { kind: 'polyline', points: edgePoints };
   } catch {
     // Fall through to replicad's face outline path for shapes whose wire edges
     // cannot be sampled directly by OpenCascade.
@@ -223,7 +269,7 @@ function wireToPoints(wire, project) {
       }
     }
     if (points.length > 1 && samePoint(points[0], points.at(-1))) points.pop();
-    return points;
+    return { kind: 'polyline', points };
   } finally {
     temporaryFace.delete();
   }
@@ -246,7 +292,9 @@ async function convertStepToDxf(stepBuffer) {
     const wires = [face.clone().outerWire(), ...face.clone().innerWires()];
     let loops;
     try {
-      loops = wires.map((wire) => wireToPoints(wire, project)).filter((points) => points.length >= 3);
+      loops = wires
+        .map((wire) => wireToPoints(wire, project))
+        .filter((loop) => loop.kind === 'circle' || loop.points?.length >= 3);
     } finally {
       wires.forEach((wire) => wire.delete());
     }
@@ -256,11 +304,15 @@ async function convertStepToDxf(stepBuffer) {
 
     const writer = new DxfWriter();
     writer.setUnits(Units.Millimeters);
-    for (const points of loops) {
-      writer.addLWPolyline(
-        points.map(([x, y]) => ({ point: { x, y } })),
-        { flags: LWPolylineFlags.Closed },
-      );
+    for (const loop of loops) {
+      if (loop.kind === 'circle') {
+        writer.addCircle({ x: loop.center[0], y: loop.center[1], z: 0 }, loop.radius);
+      } else {
+        writer.addLWPolyline(
+          loop.points.map(([x, y]) => ({ point: { x, y } })),
+          { flags: LWPolylineFlags.Closed },
+        );
+      }
     }
     return Buffer.from(`${writer.stringify()}\n`, 'utf8');
   } finally {

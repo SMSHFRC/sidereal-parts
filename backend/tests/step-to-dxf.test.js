@@ -25,7 +25,8 @@ test('converts a STEP plate with a hole into a millimeter DXF', async () => {
 
   assert.match(text, /\nSECTION\n/);
   assert.match(text, /\n\$INSUNITS\n70\n4\n/);
-  assert.equal((text.match(/\nLWPOLYLINE\n/g) ?? []).length, 2);
+  assert.equal((text.match(/\nLWPOLYLINE\n/g) ?? []).length, 1);
+  assert.equal((text.match(/\nCIRCLE\n/g) ?? []).length, 1);
   assert.match(text, /\nEOF\n/);
 
   perforatedPlate.delete();
