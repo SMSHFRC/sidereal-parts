@@ -28,6 +28,7 @@ const PRINT_BATCH_STATUS = {
   CANCELLED: 'cancelled',
 };
 const ACTIVE_OPERATOR_STATUSES = [TASK_STATUS.ACCEPTED, TASK_STATUS.PROCESSING];
+const ACTIVE_BLOCKING_STATUSES = [TASK_STATUS.PROCESSING];
 const ACTIVE_MACHINE_STATUSES = [TASK_STATUS.PROCESSING];
 const MERGE_PRINT_TRANSFER_REASON = 'merge_print_batch';
 
@@ -114,7 +115,7 @@ async function assertNoBlockingWork(tx, actorId, method, currentTaskId = null) {
   const active = await tx.task.findFirst({
     where: {
       assigneeId: actorId,
-      status: { in: ACTIVE_OPERATOR_STATUSES },
+      status: { in: ACTIVE_BLOCKING_STATUSES },
       ...(currentTaskId ? { id: { not: currentTaskId } } : {}),
       manufacturingMethod: { occupancy: METHOD_OCCUPANCY.BLOCKING },
     },
@@ -525,9 +526,6 @@ export const taskService = {
         throw ApiError.badRequest('任務尚未有隊員接單');
       }
 
-      if (claiming) {
-        await assertNoBlockingWork(tx, actor.id, task.manufacturingMethod, id);
-      }
       if (nextStatus === TASK_STATUS.PROCESSING) {
         await assertNoBlockingWork(tx, actor.id, task.manufacturingMethod, id);
         await assertMachineAvailable(tx, task);
@@ -610,17 +608,6 @@ export const taskService = {
       throw ApiError.forbidden('僅 member 可接單');
     }
     return prisma.$transaction(async (tx) => {
-      const task = await tx.task.findUnique({
-        where: { id },
-        include: {
-          manufacturingMethod: {
-            select: { id: true, code: true, name: true, occupancy: true },
-          },
-        },
-      });
-      if (!task) throw ApiError.notFound('任務不存在');
-      await assertNoBlockingWork(tx, actor.id, task.manufacturingMethod, id);
-
       const r = await tx.task.updateMany({
         where: { id, status: TASK_STATUS.PENDING, assigneeId: null },
         data: { assigneeId: actor.id, status: TASK_STATUS.ACCEPTED },

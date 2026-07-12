@@ -37,15 +37,20 @@ before(async () => {
     where: { OR: testUserPrefixes.map((prefix) => ({ username: { startsWith: prefix } })) },
     select: { id: true },
   });
-  if (staleUsers.length > 0) {
-    await prisma.task.updateMany({
-      where: {
-        assigneeId: { in: staleUsers.map((user) => user.id) },
-        status: { in: ['accepted', 'processing'] },
-      },
-      data: { status: 'cancelled' },
-    });
-  }
+  await prisma.task.updateMany({
+    where: {
+      status: { in: ['accepted', 'processing'] },
+      ...(staleUsers.length > 0
+        ? {
+            OR: [
+              { assigneeId: { in: staleUsers.map((user) => user.id) } },
+              { creator: { username: 'admin' } },
+            ],
+          }
+        : {}),
+    },
+    data: { status: 'cancelled' },
+  });
 });
 
 after(async () => {
@@ -579,7 +584,15 @@ test('subsystem progress counts pending tasks by subsystem ownership', async () 
   assert.equal(current.body.data.progress.machining.pending, 1);
 });
 
-test('blocking 加工者有未完成工作時不可再接另一個 blocking 任務', async () => {
+test('blocking 加工者可先接多件，但開始加工時不可同時做兩件 blocking 任務', async () => {
+  await prisma.task.updateMany({
+    where: {
+      manufacturingMethodId: ctx.methodId.CUTOFF,
+      status: 'processing',
+    },
+    data: { status: 'cancelled' },
+  });
+
   const worker = await api
     .post('/api/v1/auth/register')
     .send({ username: `blocking_worker_${S}`, password: pw, role: 'member' });
@@ -601,8 +614,20 @@ test('blocking 加工者有未完成工作時不可再接另一個 blocking 任�
   assert.equal(claimFirst.status, 200);
 
   const claimSecond = await api.post(`/api/v1/tasks/${second.body.data.id}/claim`).set(auth(token));
-  assert.equal(claimSecond.status, 409);
-  assert.equal(claimSecond.body.error.code, 'BLOCKING_WORK_ACTIVE');
+  assert.equal(claimSecond.status, 200);
+
+  const startFirst = await api
+    .patch(`/api/v1/tasks/${first.body.data.id}/status`)
+    .set(auth(token))
+    .send({ status: 'processing' });
+  assert.equal(startFirst.status, 200);
+
+  const startSecond = await api
+    .patch(`/api/v1/tasks/${second.body.data.id}/status`)
+    .set(auth(token))
+    .send({ status: 'processing' });
+  assert.equal(startSecond.status, 409);
+  assert.equal(startSecond.body.error.code, 'BLOCKING_WORK_ACTIVE');
 });
 
 test('automatic 3D 列印不阻擋同一加工者接 blocking 任務', async () => {
