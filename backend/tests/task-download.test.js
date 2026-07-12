@@ -38,11 +38,14 @@ test('DXF conversion requests a STEP export for one Onshape part', () => {
     onshapePartId: 'JHD',
     onshapeConfig: 'default',
   });
-  assert.equal(payload.format, 'STEP');
+  assert.equal(payload.formatName, 'STEP');
   assert.equal(payload.destinationName, 'indexer-1');
   assert.equal(payload.partIds, 'JHD');
-  assert.equal(payload.units, 'millimeter');
-  assert.equal(payload.zipSingleFileOutput, false);
+  assert.equal(payload.unit, 'millimeter');
+  assert.equal(payload.grouping, true);
+  assert.equal(payload.storeInDocument, false);
+  assert.equal(payload.triggerAutoDownload, false);
+  assert.equal(payload.stepVersionString, 'AP242');
   assert.equal(payload.configuration, 'default');
 });
 

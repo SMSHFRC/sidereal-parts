@@ -155,6 +155,8 @@ async function apiFetch(userId, path, { raw = false, label = 'Onshape API' } = {
 }
 
 const isOnshapeHost = (hostname) => hostname === 'onshape.com' || hostname.endsWith('.onshape.com');
+const STEP_TRANSLATION_POLL_DELAYS_MS = [1000, 1500, 2500, 4000, 6000, 8000, 10000];
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function apiDownloadFetch(userId, path, { method = 'GET', body, label = 'Onshape export' } = {}) {
   assertEnabled();
@@ -217,13 +219,14 @@ export const downloadFilename = (task, format) => {
 };
 
 export const stepExportPayload = (task) => ({
-  format: 'STEP',
+  formatName: 'STEP',
   destinationName: originalPartName(task),
-  triggerAutoDownload: true,
+  triggerAutoDownload: false,
   storeInDocument: false,
-  zipSingleFileOutput: false,
-  units: 'millimeter',
+  grouping: true,
+  unit: 'millimeter',
   partIds: task.onshapePartId,
+  stepVersionString: 'AP242',
   ...(task.onshapeConfig ? { configuration: task.onshapeConfig } : {}),
 });
 
@@ -257,21 +260,63 @@ export const stepExportRefs = (task) => {
   });
 };
 
+async function waitForStepTranslation(userId, initialTranslation) {
+  let translation = initialTranslation;
+
+  for (let attempt = 0; attempt <= STEP_TRANSLATION_POLL_DELAYS_MS.length; attempt += 1) {
+    if (translation?.requestState === 'DONE') return translation;
+    if (translation?.requestState === 'FAILED') {
+      const reason = translation.failureReason ? `：${String(translation.failureReason).slice(0, 180)}` : '';
+      throw new ApiError(502, `Onshape STEP 匯出失敗${reason}`, 'ONSHAPE_TRANSLATION_FAILED');
+    }
+    if (!translation?.id) {
+      throw new ApiError(502, 'Onshape STEP 匯出沒有回傳 translation id', 'ONSHAPE_TRANSLATION_MISSING_ID');
+    }
+    if (attempt === STEP_TRANSLATION_POLL_DELAYS_MS.length) {
+      throw new ApiError(504, 'Onshape STEP 匯出逾時，請稍後重試', 'ONSHAPE_TRANSLATION_TIMEOUT');
+    }
+
+    await delay(STEP_TRANSLATION_POLL_DELAYS_MS[attempt]);
+    translation = await apiFetch(userId, `/translations/${encodeURIComponent(translation.id)}`, {
+      label: 'Onshape STEP 匯出狀態',
+    });
+  }
+
+  throw new ApiError(504, 'Onshape STEP 匯出逾時，請稍後重試', 'ONSHAPE_TRANSLATION_TIMEOUT');
+}
+
+async function downloadStepTranslationResult(userId, translation) {
+  const fid = Array.isArray(translation?.resultExternalDataIds) ? translation.resultExternalDataIds[0] : null;
+  const did = translation?.resultDocumentId || translation?.documentId;
+  if (!did || !fid) {
+    throw new ApiError(502, 'Onshape STEP 匯出完成但沒有回傳下載檔案', 'ONSHAPE_TRANSLATION_NO_FILE');
+  }
+
+  const response = await apiDownloadFetch(
+    userId,
+    `/documents/d/${encodeURIComponent(did)}/externaldata/${encodeURIComponent(fid)}`,
+    { label: 'Onshape STEP 檔案' },
+  );
+  return Buffer.from(await response.arrayBuffer());
+}
+
 async function exportStepDxf(userId, task) {
-  let response;
+  let stepBuffer;
   let lastNotFound = null;
 
   for (const ref of stepExportRefs(task)) {
     try {
-      response = await apiDownloadFetch(
+      const translation = await apiFetch(
         userId,
-        `/documents/d/${ref.did}/${ref.wvm}/${ref.wvmId}/e/${ref.eid}/export`,
+        `/partstudios/d/${ref.did}/${ref.wvm}/${ref.wvmId}/e/${ref.eid}/translations`,
         {
           method: 'POST',
           label: 'Onshape STEP 匯出',
           body: stepExportPayload(task),
         },
       );
+      const completed = await waitForStepTranslation(userId, translation);
+      stepBuffer = await downloadStepTranslationResult(userId, completed);
       break;
     } catch (error) {
       if (error instanceof ApiError && error.statusCode === 404 && task.onshapeWvm === 'm') {
@@ -282,9 +327,8 @@ async function exportStepDxf(userId, task) {
     }
   }
 
-  if (!response) throw lastNotFound ?? ApiError.notFound('Onshape 找不到此零件或匯出檔案');
+  if (!stepBuffer) throw lastNotFound ?? ApiError.notFound('Onshape 找不到此零件或匯出檔案');
 
-  const stepBuffer = Buffer.from(await response.arrayBuffer());
   assertValidStep(stepBuffer);
   try {
     return await stepToDxf(stepBuffer);
