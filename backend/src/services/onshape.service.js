@@ -121,13 +121,16 @@ const summarizeOnshapeBody = (body) => {
   return plain || null;
 };
 
-async function apiFetch(userId, path, { raw = false, label = 'Onshape API' } = {}) {
+async function apiFetch(userId, path, { raw = false, label = 'Onshape API', method = 'GET', body } = {}) {
   assertEnabled();
   const token = await getValidToken(userId);
   const res = await fetch(`${env.ONSHAPE_API_BASE}${path}`, {
+    method,
+    body: body == null ? undefined : JSON.stringify(body),
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: raw ? '*/*' : 'application/json;charset=UTF-8; qs=0.09',
+      ...(body == null ? {} : { 'Content-Type': 'application/json;charset=UTF-8; qs=0.09' }),
     },
   });
   if (res.status === 401) {
