@@ -75,27 +75,30 @@ function RowThumb({
   const [open, setOpen] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
   const [state, setState] = useState<'idle' | 'loading' | 'ok' | 'none'>('idle');
-  // 僅同文件、且有 element + partId 的零件可算圖
-  const canLoad =
-    Boolean(row.sourcePartId && row.sourceElementId) &&
-    (!row.sourceDocumentId || row.sourceDocumentId === osRef.did);
+
+  // 算縮圖的參照：本文件零件走 assembly 工作區；外部文件（COTS）走其 version / microversion
+  const sameDoc = !row.sourceDocumentId || row.sourceDocumentId === osRef.did;
+  const thumbRef =
+    row.sourcePartId && row.sourceElementId
+      ? sameDoc
+        ? { did: osRef.did, wvm: osRef.wvm, wvmId: osRef.wvmId, eid: row.sourceElementId, partId: row.sourcePartId }
+        : row.sourceVersionId
+          ? { did: row.sourceDocumentId!, wvm: 'v', wvmId: row.sourceVersionId, eid: row.sourceElementId, partId: row.sourcePartId }
+          : row.sourceMicroversionId
+            ? { did: row.sourceDocumentId!, wvm: 'm', wvmId: row.sourceMicroversionId, eid: row.sourceElementId, partId: row.sourcePartId }
+            : null
+      : null;
 
   useEffect(() => () => { if (src) URL.revokeObjectURL(src); }, [src]);
 
-  if (!canLoad) return null;
+  if (!thumbRef) return null;
 
   const toggle = () => {
     const next = !open;
     setOpen(next);
     if (next && state === 'idle') {
       setState('loading');
-      fetchOnshapePartThumbnail({
-        did: osRef.did,
-        wvm: osRef.wvm,
-        wvmId: osRef.wvmId,
-        eid: row.sourceElementId!,
-        partId: row.sourcePartId!,
-      })
+      fetchOnshapePartThumbnail(thumbRef)
         .then((u) => {
           if (u) {
             setSrc(u);

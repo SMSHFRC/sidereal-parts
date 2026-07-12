@@ -292,6 +292,13 @@ const sourcePartId = (source) =>
 const sourceConfig = (source) =>
   sourceValue(source, ['configuration', 'configurationId', 'config', 'sourceConfiguration']);
 
+// 外部文件零件（多為 COTS）的版本參照，供算縮圖用（本文件零件則走 assembly 工作區）
+const sourceVersionId = (source) =>
+  sourceValue(source, ['versionId', 'documentVersionId', 'sourceVersionId']);
+
+const sourceMicroversionId = (source) =>
+  sourceValue(source, ['documentMicroversionId', 'microversionId', 'documentMicroversion', 'sourceMicroversionId']);
+
 export const classifyBomRow = (row, rootDid) => {
   const src = row.itemSource ?? {};
   const docId = sourceDocumentId(src);
@@ -338,6 +345,8 @@ export const classifyBomRow = (row, rootDid) => {
     sourceElementId: sourceElementId(src) ?? null,
     sourcePartId: partId ?? null,
     sourceConfig: sourceConfig(src) ?? null,
+    sourceVersionId: sourceVersionId(src) ?? null,
+    sourceMicroversionId: sourceMicroversionId(src) ?? null,
     classification,
     classificationReason,
     cotsReason: classification === 'cots' ? classificationReason : null,

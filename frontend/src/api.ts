@@ -266,6 +266,8 @@ export interface OnshapeBomItem {
   sourceElementId: string | null;
   sourcePartId: string | null;
   sourceConfig: string | null;
+  sourceVersionId?: string | null; // 外部文件零件（COTS）算縮圖用
+  sourceMicroversionId?: string | null;
   classification: 'made' | 'cots' | 'unknown';
   classificationReason: string | null;
   cotsReason: string | null;
