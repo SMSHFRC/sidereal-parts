@@ -410,6 +410,28 @@ async function fetchAssemblyBomRows(userId, { did, wvm, wvmId, eid }) {
   });
 }
 
+// 取得 workspace 目前的 microversion，用來把版本凍結成固定快照（下載不再漂移）
+async function fetchCurrentMicroversion(userId, { did, wvm, wvmId }) {
+  const data = await apiFetch(
+    userId,
+    `/documents/d/${did}/${wvm}/${wvmId}/currentmicroversion`,
+    { label: 'Onshape 版本讀取' },
+  );
+  return data?.microversion ?? null;
+}
+
+// 把工作區參照（wvm='w'）凍結成 microversion 參照（wvm='m'）。非工作區或取不到時回原參照。
+async function freezeRefToMicroversion(userId, ref) {
+  if (ref.wvm !== 'w') return { wvm: ref.wvm, wvmId: ref.wvmId };
+  try {
+    const microversion = await fetchCurrentMicroversion(userId, ref);
+    if (microversion) return { wvm: 'm', wvmId: microversion };
+  } catch {
+    // Onshape 未連結或讀取失敗：保留工作區參照（仍可下載，只是會跟著設計變動）
+  }
+  return { wvm: ref.wvm, wvmId: ref.wvmId };
+}
+
 async function makeImportPreview(userId, url) {
   const ref = parseOnshapeUrl(url);
   if (!ref) throw ApiError.badRequest('不是有效的 Onshape 文件連結', 'NOT_ONSHAPE_URL');
@@ -646,6 +668,10 @@ export const onshapeService = {
       : null;
     const revision = preview.ref.wvm === 'v' ? preview.ref.wvmId : null;
 
+    // 版本快照：匯入當下把工作區參照凍結成 microversion，讓每一版下載到的加工檔固定不變。
+    // drawingUrl 仍保留原工作區連結，供之後 Create Revision 取得最新設計。
+    const frozen = await freezeRefToMicroversion(userId, preview.ref);
+
     const result = await prisma.$transaction(async (tx) => {
       const batch = await tx.onshapeImportBatch.create({
         data: {
@@ -685,8 +711,8 @@ export const onshapeService = {
           rewardPoints,
           drawingUrl: url,
           onshapeDid: preview.ref.did,
-          onshapeWvm: preview.ref.wvm,
-          onshapeWvmId: preview.ref.wvmId,
+          onshapeWvm: frozen.wvm,
+          onshapeWvmId: frozen.wvmId,
           onshapeEid: identity.onshapeEid,
           onshapePartId: identity.onshapePartId,
           onshapeConfig: identity.onshapeConfig,
@@ -948,15 +974,9 @@ export const onshapeService = {
     };
   },
 
-  // 取得目前 workspace 的 microversion，用來把「舊版本」凍結在建立新版本當下的幾何，
-  // 使舊 revision 之後下載到的 STEP/STL/DXF 不會被新設計覆蓋。best-effort。
-  async freezeMicroversion(userId, { did, wvm, wvmId }) {
-    const data = await apiFetch(
-      userId,
-      `/documents/d/${did}/${wvm}/${wvmId}/currentmicroversion`,
-      { label: 'Onshape 版本讀取' },
-    );
-    return data?.microversion ?? null;
+  // 取得目前 workspace 的 microversion（給版本管理凍結快照用）。best-effort。
+  async freezeMicroversion(userId, ref) {
+    return fetchCurrentMicroversion(userId, ref);
   },
 
   async thumbnail(userId, { did, wvm, wvmId, eid }) {

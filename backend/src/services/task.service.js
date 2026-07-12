@@ -17,6 +17,19 @@ const onshapeFields = (drawingUrl) => {
   };
 };
 
+// 從任務還原「工作區參照」（給版本管理取最新設計用）：
+// 優先用任務目前的工作區參照，否則從 drawingUrl 解析（匯入後任務已凍結成 'm'，工作區靠 URL 還原）
+function workspaceRefOf(task) {
+  if (task.onshapeWvm === 'w' && task.onshapeWvmId) {
+    return { did: task.onshapeDid, wvm: 'w', wvmId: task.onshapeWvmId };
+  }
+  const r = task.drawingUrl ? parseOnshapeUrl(task.drawingUrl) : null;
+  if (r && r.wvm === 'w' && r.did === task.onshapeDid) {
+    return { did: r.did, wvm: 'w', wvmId: r.wvmId };
+  }
+  return null;
+}
+
 // 積分規則：加工分 = 加工方式的 basePoints/件（CNC/車床 5、3D列印/雷切 1）；後處理分 2/件
 const POST_PROCESS_POINTS_PER_UNIT = 2;
 const METHOD_OCCUPANCY = {
@@ -1014,17 +1027,16 @@ export const taskService = {
       throw ApiError.badRequest('僅能從目前版本建立新版本', 'NOT_CURRENT_REVISION');
     }
 
-    // best-effort：把舊版本凍結在目前 microversion（僅對活動工作區的 Onshape 零件）
-    let freezeMicroversion = null;
-    if (current.onshapeDid && current.onshapeWvm === 'w') {
+    // 新版本 = 目前 Onshape 最新設計的「固定快照」：取工作區當下的 microversion 凍結，
+    // 之後下載/存取都不會再變。舊版本本身在它出生時就已凍結，這裡不動它。
+    let snapshot = { onshapeWvm: current.onshapeWvm, onshapeWvmId: current.onshapeWvmId };
+    const wsRef = workspaceRefOf(current);
+    if (wsRef) {
       try {
-        freezeMicroversion = await onshapeService.freezeMicroversion(actor.id, {
-          did: current.onshapeDid,
-          wvm: current.onshapeWvm,
-          wvmId: current.onshapeWvmId,
-        });
+        const microversion = await onshapeService.freezeMicroversion(actor.id, wsRef);
+        if (microversion) snapshot = { onshapeWvm: 'm', onshapeWvmId: microversion };
       } catch {
-        freezeMicroversion = null; // Onshape 未連結或讀取失敗時，仍可建立版本
+        // Onshape 未連結或讀取失敗：沿用舊版參照，仍可建立版本
       }
     }
 
@@ -1037,7 +1049,7 @@ export const taskService = {
       });
       const nextRev = (top?.revision ?? current.revision) + 1;
 
-      // 建立新版本（沿用舊版的 Onshape 活動工作區參照 = 目前最新設計）
+      // 建立新版本（凍結到目前最新設計的 microversion）
       const created = await tx.task.create({
         data: {
           partNumber: current.partNumber,
@@ -1054,10 +1066,10 @@ export const taskService = {
           quantity: current.quantity,
           rewardPoints: current.rewardPoints,
           creatorId: actor.id,
-          drawingUrl: current.drawingUrl,
+          drawingUrl: current.drawingUrl, // 保留工作區連結，供下一次 Create Revision 取最新設計
           onshapeDid: current.onshapeDid,
-          onshapeWvm: current.onshapeWvm,
-          onshapeWvmId: current.onshapeWvmId,
+          onshapeWvm: snapshot.onshapeWvm,
+          onshapeWvmId: snapshot.onshapeWvmId,
           onshapeEid: current.onshapeEid,
           onshapePartId: current.onshapePartId,
           onshapeConfig: current.onshapeConfig,
@@ -1072,13 +1084,12 @@ export const taskService = {
         include: taskInclude,
       });
 
-      // 封存舊版本；有取到 microversion 就凍結其幾何（'w' → 'm'）
+      // 封存舊版本（其幾何已於出生時凍結，不再變動）
       await tx.task.update({
         where: { id: current.id },
         data: {
           revisionStatus: 'archived',
           supersededById: created.id,
-          ...(freezeMicroversion ? { onshapeWvm: 'm', onshapeWvmId: freezeMicroversion } : {}),
         },
       });
 
