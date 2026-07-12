@@ -9,6 +9,7 @@ import {
   getTaskDownloadSpec,
   taskApi,
   transitionLabel,
+  type PrintMergeCandidate,
   type Task,
   type TaskStatus,
 } from '../api';
@@ -56,8 +57,12 @@ export default function TaskDetail() {
   const [task, setTask] = useState<Task | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<TaskStatus | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [mergePrint, setMergePrint] = useState(false);
+  const [mergeCandidates, setMergeCandidates] = useState<PrintMergeCandidate[]>([]);
+  const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([]);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -71,10 +76,26 @@ export default function TaskDetail() {
 
   useEffect(load, [load]);
 
+  useEffect(() => {
+    setMergePrint(false);
+    setMergeCandidates([]);
+    setSelectedMergeIds([]);
+  }, [task?.id]);
+
   if (error) return <ErrorBox message={error} onRetry={load} />;
   if (!task || !user) return <Spinner label="載入任務中…" />;
 
   const actions = allowedActions(task, user);
+  const is3dPrint = task.manufacturingMethod.code === '3DP';
+  const canPreparePrintBatch =
+    is3dPrint &&
+    ['pending', 'accepted'].includes(task.status) &&
+    (!task.assignee || task.assignee.id === user.id) &&
+    user.role === 'member';
+  const visibleActions =
+    is3dPrint && task.status === 'accepted'
+      ? actions.filter((status) => status !== 'processing')
+      : actions;
   const isOpenPool = task.status === 'pending' && !task.assignee;
   const showClaimPost = canClaimPostProcess(task, user);
   const downloadSpec = getTaskDownloadSpec(task);
@@ -136,6 +157,87 @@ export default function TaskDetail() {
     }
   };
 
+  const toggleMergePrint = async (checked: boolean) => {
+    setMergePrint(checked);
+    setSelectedMergeIds([]);
+    if (!checked || mergeCandidates.length > 0) return;
+    setBatchBusy(true);
+    setActionError('');
+    try {
+      setMergeCandidates(await taskApi.printMergeCandidates(task.id));
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '載入可合併任務失敗');
+      setMergePrint(false);
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const toggleSelectedMerge = (candidateId: string) => {
+    setSelectedMergeIds((current) =>
+      current.includes(candidateId)
+        ? current.filter((id) => id !== candidateId)
+        : [...current, candidateId],
+    );
+  };
+
+  const startPrintBatch = async () => {
+    const selected = mergeCandidates.filter((candidate) => selectedMergeIds.includes(candidate.id));
+    const transfers = selected.filter((candidate) => candidate.transferRequired);
+    if (transfers.length > 0) {
+      const lines = transfers
+        .map((candidate) => `${candidate.note?.split('\n').find((line) => line.startsWith('Onshape: '))?.slice('Onshape: '.length).trim() || candidate.partNumber} 目前由 ${candidate.assignee?.username ?? '其他人'} 負責`)
+        .join('\n');
+      if (
+        !window.confirm(
+          `${lines}\n\n將這些任務加入本次列印後，任務將轉移給你。是否繼續？`,
+        )
+      ) {
+        return;
+      }
+    } else if (!window.confirm(mergePrint ? '確定開始這批 3D 列印？' : '確定開始 3D 列印？')) {
+      return;
+    }
+
+    setBatchBusy(true);
+    setActionError('');
+    try {
+      const batch = await taskApi.startPrintBatch(task.id, {
+        taskIds: mergePrint ? selectedMergeIds : [],
+        confirmTransfer: transfers.length > 0,
+      });
+      const updated = batch.items.find((item) => item.task.id === task.id)?.task;
+      if (updated) setTask(updated);
+      setMergePrint(false);
+      setMergeCandidates([]);
+      setSelectedMergeIds([]);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '開始列印批次失敗');
+      load();
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const completePrintBatch = async () => {
+    const batchId = task.activePrintBatch?.id;
+    if (!batchId) return;
+    if (!window.confirm('確定將此列印批次內的任務一起更新為列印完成？')) return;
+    setBatchBusy(true);
+    setActionError('');
+    try {
+      const batch = await taskApi.completePrintBatch(batchId);
+      const updated = batch.items.find((item) => item.task.id === task.id)?.task;
+      if (updated) setTask(updated);
+      refreshMe().catch(() => {});
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '完成列印批次失敗');
+      load();
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-lg">
       <Link to="/" className="text-sm text-slate-500 active:text-slate-900">
@@ -189,7 +291,78 @@ export default function TaskDetail() {
         <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>
       )}
 
-      {(actions.length > 0 || showClaimPost) && (
+      {canPreparePrintBatch && (
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+          <label className="flex items-center gap-2 text-sm font-semibold text-sky-950">
+            <input
+              type="checkbox"
+              checked={mergePrint}
+              onChange={(e) => toggleMergePrint(e.target.checked)}
+              className="h-4 w-4"
+            />
+            與其他零件一起列印
+          </label>
+          {mergePrint && (
+            <div className="mt-3 space-y-2">
+              {batchBusy && mergeCandidates.length === 0 ? (
+                <p className="text-xs text-sky-700">載入可合併任務中...</p>
+              ) : mergeCandidates.length === 0 ? (
+                <p className="text-xs text-sky-700">目前沒有可合併的 3D 列印任務</p>
+              ) : (
+                mergeCandidates.map((candidate) => (
+                  <label
+                    key={candidate.id}
+                    className="flex items-start gap-2 rounded-lg border border-sky-100 bg-white px-2 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedMergeIds.includes(candidate.id)}
+                      onChange={() => toggleSelectedMerge(candidate.id)}
+                      className="mt-1 h-4 w-4"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold text-slate-900">
+                        {candidate.note?.split('\n').find((line) => line.startsWith('Onshape: '))?.slice('Onshape: '.length).trim() || candidate.partNumber}
+                      </span>
+                      <span className="block text-xs text-slate-500">
+                        {candidate.material?.name ?? '未指定材料'} · {candidate.assignee?.username ?? '未接單'}
+                        {candidate.transferRequired ? ' · 需要轉移確認' : ''}
+                      </span>
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={startPrintBatch}
+            disabled={batchBusy}
+            className="mt-3 min-h-11 w-full rounded-xl bg-sky-700 text-sm font-semibold text-white active:bg-sky-800 disabled:opacity-50"
+          >
+            {batchBusy ? '處理中...' : mergePrint ? '開始列印批次' : '開始 3D 列印'}
+          </button>
+        </div>
+      )}
+
+      {task.activePrintBatch && task.status === 'processing' && (
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+          <p className="font-semibold">列印批次 #{task.activePrintBatch.id}</p>
+          <p className="mt-1 text-xs text-sky-700">此任務已與同批零件一起列印中。</p>
+          {(task.activePrintBatch.ownerId === user.id || user.role === 'admin') && (
+            <button
+              type="button"
+              onClick={completePrintBatch}
+              disabled={batchBusy}
+              className="mt-3 min-h-10 w-full rounded-lg bg-emerald-600 text-sm font-semibold text-white active:bg-emerald-700 disabled:opacity-50"
+            >
+              {batchBusy ? '處理中...' : '完成整個列印批次'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {(visibleActions.length > 0 || showClaimPost) && (
         <div className="mt-4 flex flex-col gap-2">
           {showClaimPost && (
             <button
@@ -200,7 +373,7 @@ export default function TaskDetail() {
               {busy === 'post_processing' ? '處理中…' : '接下後處理'}
             </button>
           )}
-          {actions.map((s) => (
+          {visibleActions.map((s) => (
             <button
               key={s}
               onClick={() => doAction(s)}

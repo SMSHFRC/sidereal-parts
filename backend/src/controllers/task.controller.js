@@ -28,6 +28,31 @@ export const taskController = {
     res.json({ success: true, data: serialize(result) });
   }),
 
+  statusReminders: asyncHandler(async (req, res) => {
+    const result = await taskService.statusReminders(req.user);
+    res.json({ success: true, data: serialize(result) });
+  }),
+
+  respondStatusReminder: asyncHandler(async (req, res) => {
+    const result = await taskService.respondStatusReminder(req.params.id, req.body, req.user);
+    res.json({ success: true, data: serialize(result) });
+  }),
+
+  printMergeCandidates: asyncHandler(async (req, res) => {
+    const result = await taskService.printMergeCandidates(req.params.id, req.user);
+    res.json({ success: true, data: serialize(result) });
+  }),
+
+  startPrintBatch: asyncHandler(async (req, res) => {
+    const result = await taskService.startPrintBatch(req.params.id, req.body, req.user);
+    res.status(201).json({ success: true, data: serialize(result) });
+  }),
+
+  completePrintBatch: asyncHandler(async (req, res) => {
+    const result = await taskService.completePrintBatch(req.params.batchId, req.user);
+    res.json({ success: true, data: serialize(result) });
+  }),
+
   update: asyncHandler(async (req, res) => {
     const result = await taskService.update(req.params.id, req.body, req.user);
     res.json({ success: true, data: serialize(result) });

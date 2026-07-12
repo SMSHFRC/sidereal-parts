@@ -22,6 +22,11 @@ enum TaskStatus {
   cancelled
 }
 
+enum MethodOccupancy {
+  blocking
+  automatic
+}
+
 model Role {
   id    Int    @id @default(autoincrement())
   name  String @unique // 'admin' | 'member'
@@ -44,6 +49,10 @@ model User {
   createdTasks      Task[]             @relation("Creator")
   assignedTasks     Task[]             @relation("Assignee")
   postProcessTasks  Task[]             @relation("PostProcessor")
+  ownedPrintBatches PrintBatch[]        @relation("PrintBatchOwner")
+  taskTransfersFrom TaskAssignmentTransfer[] @relation("TransferFromAssignee")
+  taskTransfersTo   TaskAssignmentTransfer[] @relation("TransferToAssignee")
+  taskTransfersBy   TaskAssignmentTransfer[] @relation("TransferChangedBy")
   onshapeAccount    OnshapeAccount?
   pointsLedger      UserPointsLedger[]
   sentTransfers     PointTransfer[]    @relation("TransferFrom")
@@ -198,7 +207,10 @@ model ManufacturingMethod {
   isActive       Boolean @default(true) @map("is_active")
   basePoints     Int     @default(5) @map("base_points") // 每件基礎積分
   requiresReview Boolean @default(false) @map("requires_review") // 完成需管理員驗收
+  occupancy      MethodOccupancy @default(blocking)
+  reminderMinutes Int    @default(30) @map("reminder_minutes")
   tasks          Task[]
+  printBatches   PrintBatch[]
 
   @@map("manufacturing_methods")
 }
@@ -251,6 +263,8 @@ model Task {
   quantity              Int
   rewardPoints          Int        @default(0) @map("reward_points")
   machiningExtensionMinutes Int    @default(0) @map("machining_extension_minutes")
+  statusReminderSnoozedUntil DateTime? @map("status_reminder_snoozed_until")
+  lastStatusReminderResponse String? @map("last_status_reminder_response")
   drawingUrl            String?    @map("drawing_url")
 
   // M3：Onshape 參照（由 drawingUrl 解析或零件選擇器帶入）
@@ -283,6 +297,8 @@ model Task {
   statusHistory       TaskStatusHistory[]
   pointsLedger        UserPointsLedger[]
   importBatch         OnshapeImportBatch? @relation(fields: [importBatchId], references: [id])
+  printBatchItems     PrintBatchTask[]
+  assignmentTransfers TaskAssignmentTransfer[]
 
   @@unique([partNumberPrefix, partNumberSeq])
   @@index([assigneeId])
@@ -295,6 +311,62 @@ model Task {
   @@index([importBatchId])
   @@index([onshapeDid, onshapeEid, onshapePartId])
   @@map("tasks")
+}
+
+model PrintBatch {
+  id                    BigInt     @id @default(autoincrement())
+  manufacturingMethodId Int        @map("manufacturing_method_id")
+  ownerId               BigInt     @map("owner_id")
+  status                String     @default("processing")
+  startedAt             DateTime   @default(now()) @map("started_at")
+  completedAt           DateTime?  @map("completed_at")
+  createdAt             DateTime   @default(now()) @map("created_at")
+  updatedAt             DateTime   @updatedAt @map("updated_at")
+
+  manufacturingMethod ManufacturingMethod @relation(fields: [manufacturingMethodId], references: [id])
+  owner               User                @relation("PrintBatchOwner", fields: [ownerId], references: [id])
+  items               PrintBatchTask[]
+
+  @@index([manufacturingMethodId])
+  @@index([ownerId])
+  @@index([status])
+  @@map("print_batches")
+}
+
+model PrintBatchTask {
+  id        BigInt   @id @default(autoincrement())
+  batchId   BigInt   @map("batch_id")
+  taskId    BigInt   @map("task_id")
+  addedBy   BigInt   @map("added_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  batch PrintBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  task  Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, taskId])
+  @@index([taskId])
+  @@index([addedBy])
+  @@map("print_batch_tasks")
+}
+
+model TaskAssignmentTransfer {
+  id              BigInt   @id @default(autoincrement())
+  taskId          BigInt   @map("task_id")
+  fromAssigneeId  BigInt?  @map("from_assignee_id")
+  toAssigneeId    BigInt   @map("to_assignee_id")
+  changedBy       BigInt   @map("changed_by")
+  reason          String
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  task         Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fromAssignee User? @relation("TransferFromAssignee", fields: [fromAssigneeId], references: [id])
+  toAssignee   User  @relation("TransferToAssignee", fields: [toAssigneeId], references: [id])
+  changedByUser User @relation("TransferChangedBy", fields: [changedBy], references: [id])
+
+  @@index([taskId])
+  @@index([fromAssigneeId])
+  @@index([toAssigneeId])
+  @@map("task_assignment_transfers")
 }
 
 model TaskStatusHistory {

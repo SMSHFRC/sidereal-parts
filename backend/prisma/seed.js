@@ -6,12 +6,12 @@ const prisma = new PrismaClient();
 
 const methods = [
   // basePoints：每件基礎積分；requiresReview：完成需管理員驗收才發分
-  { code: 'CNC', name: 'CNC Router', isActive: true, basePoints: 5, requiresReview: true },
-  { code: 'LATHE', name: '車床', isActive: true, basePoints: 5, requiresReview: true },
-  { code: 'MANUAL_MILL', name: '手動銑床', isActive: true, basePoints: 5, requiresReview: false },
-  { code: 'LASER', name: '雷切機', isActive: true, basePoints: 1, requiresReview: false },
-  { code: 'CUTOFF', name: '切斷機', isActive: true, basePoints: 5, requiresReview: false },
-  { code: '3DP', name: '3D 列印', isActive: true, basePoints: 1, requiresReview: false },
+  { code: 'CNC', name: 'CNC Router', isActive: true, basePoints: 5, requiresReview: true, occupancy: 'blocking', reminderMinutes: 45 },
+  { code: 'LATHE', name: '車床', isActive: true, basePoints: 5, requiresReview: true, occupancy: 'blocking', reminderMinutes: 45 },
+  { code: 'MANUAL_MILL', name: '手動銑床', isActive: true, basePoints: 5, requiresReview: false, occupancy: 'blocking', reminderMinutes: 45 },
+  { code: 'LASER', name: '雷切機', isActive: true, basePoints: 1, requiresReview: false, occupancy: 'blocking', reminderMinutes: 30 },
+  { code: 'CUTOFF', name: '切斷機', isActive: true, basePoints: 5, requiresReview: false, occupancy: 'blocking', reminderMinutes: 30 },
+  { code: '3DP', name: '3D 列印', isActive: true, basePoints: 1, requiresReview: false, occupancy: 'automatic', reminderMinutes: 240 },
 ];
 
 const materials = [

@@ -20,6 +20,32 @@ before(async () => {
   // 方法 id 依 code 查（DB id 順序未必等於 seed 陣列順序）
   const opts = await api.get('/api/v1/meta/options').set(auth(ctx.adminToken));
   ctx.methodId = Object.fromEntries(opts.body.data.methods.map((m) => [m.code, m.id]));
+
+  const testUserPrefixes = [
+    'member_a_',
+    'member_b_',
+    'member_c_',
+    'robot_worker_',
+    'blocking_worker_',
+    'auto_worker_',
+    'machine_a_',
+    'machine_b_',
+    'batch_owner_',
+    'batch_other_',
+  ];
+  const staleUsers = await prisma.user.findMany({
+    where: { OR: testUserPrefixes.map((prefix) => ({ username: { startsWith: prefix } })) },
+    select: { id: true },
+  });
+  if (staleUsers.length > 0) {
+    await prisma.task.updateMany({
+      where: {
+        assigneeId: { in: staleUsers.map((user) => user.id) },
+        status: { in: ['accepted', 'processing'] },
+      },
+      data: { status: 'cancelled' },
+    });
+  }
 });
 
 after(async () => {
@@ -551,4 +577,151 @@ test('subsystem progress counts pending tasks by subsystem ownership', async () 
   assert.equal(current.status, 200);
   assert.equal(current.body.data.subsystems[0].progress.machining.pending, 1);
   assert.equal(current.body.data.progress.machining.pending, 1);
+});
+
+test('blocking 加工者有未完成工作時不可再接另一個 blocking 任務', async () => {
+  const worker = await api
+    .post('/api/v1/auth/register')
+    .send({ username: `blocking_worker_${S}`, password: pw, role: 'member' });
+  assert.equal(worker.status, 201);
+  const token = worker.body.data.accessToken;
+
+  const first = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId.CUTOFF, quantity: 1 });
+  const second = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId.CUTOFF, quantity: 1 });
+  assert.equal(first.status, 201);
+  assert.equal(second.status, 201);
+
+  const claimFirst = await api.post(`/api/v1/tasks/${first.body.data.id}/claim`).set(auth(token));
+  assert.equal(claimFirst.status, 200);
+
+  const claimSecond = await api.post(`/api/v1/tasks/${second.body.data.id}/claim`).set(auth(token));
+  assert.equal(claimSecond.status, 409);
+  assert.equal(claimSecond.body.error.code, 'BLOCKING_WORK_ACTIVE');
+});
+
+test('automatic 3D 列印不阻擋同一加工者接 blocking 任務', async () => {
+  const worker = await api
+    .post('/api/v1/auth/register')
+    .send({ username: `auto_worker_${S}`, password: pw, role: 'member' });
+  assert.equal(worker.status, 201);
+  const token = worker.body.data.accessToken;
+
+  const printTask = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId['3DP'], quantity: 1 });
+  assert.equal(printTask.status, 201);
+  await api.post(`/api/v1/tasks/${printTask.body.data.id}/claim`).set(auth(token));
+  const startPrint = await api
+    .patch(`/api/v1/tasks/${printTask.body.data.id}/status`)
+    .set(auth(token))
+    .send({ status: 'processing' });
+  assert.equal(startPrint.status, 200);
+
+  const blockingTask = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId.CNC, quantity: 1 });
+  assert.equal(blockingTask.status, 201);
+  const claimBlocking = await api.post(`/api/v1/tasks/${blockingTask.body.data.id}/claim`).set(auth(token));
+  assert.equal(claimBlocking.status, 200);
+});
+
+test('一般設備同時只能有一個 processing 任務', async () => {
+  const a = await api
+    .post('/api/v1/auth/register')
+    .send({ username: `machine_a_${S}`, password: pw, role: 'member' });
+  const b = await api
+    .post('/api/v1/auth/register')
+    .send({ username: `machine_b_${S}`, password: pw, role: 'member' });
+  assert.equal(a.status, 201);
+  assert.equal(b.status, 201);
+
+  const first = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId.MANUAL_MILL, quantity: 1 });
+  const second = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId.MANUAL_MILL, quantity: 1 });
+  assert.equal(first.status, 201);
+  assert.equal(second.status, 201);
+
+  await api.post(`/api/v1/tasks/${first.body.data.id}/claim`).set(auth(a.body.data.accessToken));
+  const startFirst = await api
+    .patch(`/api/v1/tasks/${first.body.data.id}/status`)
+    .set(auth(a.body.data.accessToken))
+    .send({ status: 'processing' });
+  assert.equal(startFirst.status, 200);
+
+  await api.post(`/api/v1/tasks/${second.body.data.id}/claim`).set(auth(b.body.data.accessToken));
+  const startSecond = await api
+    .patch(`/api/v1/tasks/${second.body.data.id}/status`)
+    .set(auth(b.body.data.accessToken))
+    .send({ status: 'processing' });
+  assert.equal(startSecond.status, 409);
+  assert.equal(startSecond.body.error.code, 'MACHINE_BUSY');
+});
+
+test('3D 合併列印需確認他人任務轉移並保留轉移紀錄', async () => {
+  const owner = await api
+    .post('/api/v1/auth/register')
+    .send({ username: `batch_owner_${S}`, password: pw, role: 'member' });
+  const other = await api
+    .post('/api/v1/auth/register')
+    .send({ username: `batch_other_${S}`, password: pw, role: 'member' });
+  assert.equal(owner.status, 201);
+  assert.equal(other.status, 201);
+  const ownerToken = owner.body.data.accessToken;
+  const otherToken = other.body.data.accessToken;
+
+  const main = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId['3DP'], quantity: 1 });
+  const mine = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId['3DP'], quantity: 1 });
+  const transferred = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId['3DP'], quantity: 1 });
+  assert.equal(main.status, 201);
+  assert.equal(mine.status, 201);
+  assert.equal(transferred.status, 201);
+
+  await api.post(`/api/v1/tasks/${main.body.data.id}/claim`).set(auth(ownerToken));
+  await api.post(`/api/v1/tasks/${mine.body.data.id}/claim`).set(auth(ownerToken));
+  await api.post(`/api/v1/tasks/${transferred.body.data.id}/claim`).set(auth(otherToken));
+
+  const needsConfirm = await api
+    .post(`/api/v1/tasks/${main.body.data.id}/print-batch/start`)
+    .set(auth(ownerToken))
+    .send({ taskIds: [mine.body.data.id, transferred.body.data.id] });
+  assert.equal(needsConfirm.status, 409);
+  assert.equal(needsConfirm.body.error.code, 'TRANSFER_CONFIRMATION_REQUIRED');
+
+  const started = await api
+    .post(`/api/v1/tasks/${main.body.data.id}/print-batch/start`)
+    .set(auth(ownerToken))
+    .send({ taskIds: [mine.body.data.id, transferred.body.data.id], confirmTransfer: true });
+  assert.equal(started.status, 201);
+  assert.equal(started.body.data.items.length, 3);
+  assert.ok(started.body.data.items.every((item) => item.task.status === 'processing'));
+  assert.ok(started.body.data.items.every((item) => item.task.assignee.id === owner.body.data.user.id));
+
+  const transferRows = await prisma.taskAssignmentTransfer.findMany({
+    where: { taskId: BigInt(transferred.body.data.id), reason: 'merge_print_batch' },
+  });
+  assert.equal(transferRows.length, 1);
+  assert.equal(transferRows[0].fromAssigneeId.toString(), other.body.data.user.id);
+  assert.equal(transferRows[0].toAssigneeId.toString(), owner.body.data.user.id);
 });

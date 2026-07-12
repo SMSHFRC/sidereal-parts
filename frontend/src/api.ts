@@ -26,6 +26,8 @@ export interface Ref {
 export interface MethodRef extends Ref {
   basePoints?: number;
   requiresReview?: boolean;
+  occupancy?: 'blocking' | 'automatic';
+  reminderMinutes?: number;
 }
 export interface UserRef {
   id: string;
@@ -43,6 +45,8 @@ export interface OptionRef extends Ref {
 export interface MethodOption extends OptionRef {
   basePoints?: number;
   requiresReview?: boolean;
+  occupancy?: 'blocking' | 'automatic';
+  reminderMinutes?: number;
 }
 export interface MasterDataItem extends OptionRef {
   isActive: boolean;
@@ -73,12 +77,17 @@ export interface Task {
   quantity: number;
   rewardPoints: number;
   machiningExtensionMinutes: number;
+  statusReminderSnoozedUntil: string | null;
+  lastStatusReminderResponse: string | null;
   drawingUrl: string | null;
   dimensions: string | null;
   note: string | null;
   status: TaskStatus;
   reviewRejected?: boolean;
   processingStartedAt?: string | null;
+  currentStatusChangedAt?: string | null;
+  nextStatusReminderAt?: string | null;
+  activePrintBatch?: PrintBatchRef | null;
   createdAt: string;
   updatedAt: string;
   system: Ref;
@@ -101,6 +110,32 @@ export interface Task {
   onshapeThumbnailUrl: string | null;
   onshapeImageMeta: unknown | null;
   importBatchId: string | null;
+}
+
+export interface PrintBatchRef {
+  id: string;
+  ownerId: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface PrintBatchTask {
+  id: string;
+  batchId: string;
+  taskId: string;
+  addedBy: string;
+  createdAt: string;
+  task: Task;
+}
+
+export interface PrintBatch extends PrintBatchRef {
+  manufacturingMethodId: number;
+  items: PrintBatchTask[];
+}
+
+export interface PrintMergeCandidate extends Task {
+  transferRequired: boolean;
 }
 
 export interface TaskDownloadSpec {
@@ -522,6 +557,21 @@ export const taskApi = {
     api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   extendMachiningTime: (id: string) =>
     api<Task>(`/tasks/${id}/extend-time`, { method: 'POST' }),
+  statusReminders: () => api<Task[]>('/tasks/reminders/status'),
+  respondStatusReminder: (id: string, response: 'still_processing' | 'problem') =>
+    api<Task>(`/tasks/${id}/reminder-response`, {
+      method: 'POST',
+      body: JSON.stringify({ response }),
+    }),
+  printMergeCandidates: (id: string) =>
+    api<PrintMergeCandidate[]>(`/tasks/${id}/print-merge-candidates`),
+  startPrintBatch: (id: string, input: { taskIds?: string[]; confirmTransfer?: boolean }) =>
+    api<PrintBatch>(`/tasks/${id}/print-batch/start`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  completePrintBatch: (batchId: string) =>
+    api<PrintBatch>(`/tasks/print-batches/${batchId}/complete`, { method: 'POST' }),
   claimPostProcess: (id: string) =>
     api<Task>(`/tasks/${id}/claim-post-process`, { method: 'POST' }),
   downloadFile: (id: string, fallbackFilename: string) =>

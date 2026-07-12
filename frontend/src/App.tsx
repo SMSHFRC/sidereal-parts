@@ -142,7 +142,7 @@ function Layout({ children }: { children: ReactNode }) {
         )}
       </header>
       <main className="px-3 pt-4 sm:px-4">
-        {user?.role === 'admin' && <ProcessingTimeAlert />}
+        {user && <ProcessingTimeAlert />}
         {children}
       </main>
     </div>

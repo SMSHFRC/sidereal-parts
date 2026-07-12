@@ -12,6 +12,9 @@ import {
   updateTaskSchema,
   updateStatusSchema,
   deleteTaskSchema,
+  startPrintBatchSchema,
+  printBatchParamSchema,
+  reminderResponseSchema,
 } from '../validators/task.schema.js';
 
 const router = Router();
@@ -21,9 +24,14 @@ router.use(authenticate);
 // 建立/編輯/刪除：admin 或 member；狀態變更由 service 依擁有權判斷
 router.post('/', requireRole(ROLES.ADMIN, ROLES.MEMBER), validate(createTaskSchema), taskController.create);
 router.get('/', validate(listTasksSchema), taskController.list);
+router.get('/reminders/status', taskController.statusReminders);
+router.post('/print-batches/:batchId/complete', validate(printBatchParamSchema), taskController.completePrintBatch);
 router.get('/:id/download', validate(getTaskSchema), onshapeController.downloadTaskFile);
 router.post('/:id/simulate-timeout', requireRole(ROLES.ADMIN), validate(getTaskSchema), taskController.simulateTimeout);
 router.post('/:id/extend-time', requireRole(ROLES.ADMIN), validate(getTaskSchema), taskController.extendMachiningTime);
+router.post('/:id/reminder-response', validate(reminderResponseSchema), taskController.respondStatusReminder);
+router.get('/:id/print-merge-candidates', validate(getTaskSchema), taskController.printMergeCandidates);
+router.post('/:id/print-batch/start', validate(startPrintBatchSchema), taskController.startPrintBatch);
 router.get('/:id', validate(getTaskSchema), taskController.getById);
 router.put('/:id', requireRole(ROLES.ADMIN, ROLES.MEMBER), validate(updateTaskSchema), taskController.update);
 router.post('/:id/claim', validate(getTaskSchema), taskController.claim);

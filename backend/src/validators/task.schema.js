@@ -63,6 +63,25 @@ export const updateStatusSchema = {
   }),
 };
 
+export const startPrintBatchSchema = {
+  params: idParam,
+  body: z.object({
+    taskIds: z.array(z.coerce.bigint()).max(100).default([]),
+    confirmTransfer: z.coerce.boolean().default(false),
+  }),
+};
+
+export const printBatchParamSchema = {
+  params: z.object({ batchId: z.coerce.bigint() }),
+};
+
+export const reminderResponseSchema = {
+  params: idParam,
+  body: z.object({
+    response: z.enum(['still_processing', 'problem']),
+  }),
+};
+
 export const getTaskSchema = { params: idParam };
 export const deleteTaskSchema = { params: idParam };
 

@@ -4,7 +4,15 @@ import { ApiError } from '../utils/ApiError.js';
 const orderBy = { id: 'asc' };
 const active = { isActive: true };
 const select = { id: true, code: true, name: true };
-const methodSelect = { id: true, code: true, name: true, basePoints: true, requiresReview: true };
+const methodSelect = {
+  id: true,
+  code: true,
+  name: true,
+  basePoints: true,
+  requiresReview: true,
+  occupancy: true,
+  reminderMinutes: true,
+};
 const adminSelect = { id: true, code: true, name: true, isActive: true };
 
 const masterModels = {
