@@ -703,6 +703,7 @@ export const onshapeService = {
 
       const created = [];
       const updated = [];
+      const revisioned = []; // 已加工/完成的零件重新匯入時自動開的新版本
 
       for (const plan of madePlan) {
         const item = plan.row;
@@ -715,7 +716,11 @@ export const onshapeService = {
           onshapePartId: item.sourcePartId,
           onshapeConfig: item.sourceConfig,
         };
-        const existing = await tx.task.findFirst({ where: identity });
+        // 只配對「目前版本」，避免改版後誤配到已封存的舊版
+        const existing = await tx.task.findFirst({
+          where: { ...identity, revisionStatus: 'current' },
+          orderBy: { revision: 'desc' },
+        });
         const taskData = {
           manufacturingMethodId: plan.methodId,
           systemId: resolvedSystemId,
@@ -751,7 +756,46 @@ export const onshapeService = {
               .join('\n') || null,
         };
 
-        if (existing) {
+        // 已開始加工（processing 以後）或已完成的零件：不覆蓋，改自動開新 Revision，保留舊版加工紀錄
+        const alreadyMachined =
+          existing && ![TASK_STATUS.PENDING, TASK_STATUS.ACCEPTED].includes(existing.status);
+
+        if (existing && alreadyMachined) {
+          const top = await tx.task.findFirst({
+            where: { partNumber: existing.partNumber },
+            orderBy: { revision: 'desc' },
+            select: { revision: true },
+          });
+          const nextRev = (top?.revision ?? existing.revision) + 1;
+          const task = await tx.task.create({
+            data: {
+              ...taskData,
+              partNumber: existing.partNumber, // 沿用相同 Part Number
+              partNumberPrefix: existing.partNumberPrefix,
+              partNumberSeq: existing.partNumberSeq,
+              revision: nextRev,
+              revisionStatus: 'current',
+              creatorId: userId,
+              status: TASK_STATUS.PENDING,
+            },
+            select: { id: true, partNumber: true, status: true, revision: true },
+          });
+          // 封存舊版（維持其狀態/歷史/積分，幾何已於出生時凍結）
+          await tx.task.update({
+            where: { id: existing.id },
+            data: { revisionStatus: 'archived', supersededById: task.id },
+          });
+          await tx.taskStatusHistory.create({
+            data: {
+              taskId: task.id,
+              fromStatus: null,
+              toStatus: TASK_STATUS.PENDING,
+              changedBy: userId,
+              note: `Onshape 重新匯入：建立 Rev.${nextRev}（來自 Rev.${existing.revision}，舊版已封存）`,
+            },
+          });
+          revisioned.push(task);
+        } else if (existing) {
           const task = await tx.task.update({
             where: { id: existing.id },
             data: {
@@ -828,18 +872,19 @@ export const onshapeService = {
         await tx.cotsItem.createMany({ data: itemRows });
       }
 
-      return { batch, created, updated };
+      return { batch, created, updated, revisioned };
     });
 
     return {
       batchId: result.batch.id,
       created: result.created.length,
       updated: result.updated.length,
+      revisioned: result.revisioned.length,
       cotsCount: cotsPlan.length,
       skippedCount: skippedPlan.length,
       imageCount: preview.summary.imageCount,
       imageFailedCount: preview.summary.imageFailedCount,
-      tasks: [...result.created, ...result.updated],
+      tasks: [...result.created, ...result.updated, ...result.revisioned],
       cots: cotsPlan,
       documentName: preview.documentName,
     };

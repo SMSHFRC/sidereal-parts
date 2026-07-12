@@ -321,6 +321,7 @@ export interface OnshapeImportResult {
   batchId: string;
   created: number;
   updated: number;
+  revisioned?: number; // 已加工/完成零件重新匯入時自動開的新版本數
   cotsCount: number;
   skippedCount?: number;
   imageCount: number;

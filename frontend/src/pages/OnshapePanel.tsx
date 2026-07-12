@@ -898,9 +898,15 @@ export default function OnshapePanel() {
         <section className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
           <p className="text-sm font-semibold text-emerald-900">匯入完成</p>
           <p className="mt-1 text-xs text-emerald-800">
-            新增 {result.created}，更新 {result.updated}，COTS {result.cotsCount}
+            新增 {result.created}，更新 {result.updated}
+            {result.revisioned ? `，開新版本 ${result.revisioned}` : ''}，COTS {result.cotsCount}
             {result.skippedCount ? `，跳過 ${result.skippedCount}` : ''}
           </p>
+          {result.revisioned ? (
+            <p className="mt-1 text-[11px] text-emerald-700">
+              有 {result.revisioned} 個已加工/完成的零件已自動建立新版本（Rev+1），舊版封存保留。
+            </p>
+          ) : null}
         </section>
       )}
     </main>
