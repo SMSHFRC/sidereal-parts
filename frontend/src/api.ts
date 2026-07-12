@@ -154,12 +154,9 @@ export interface TaskDownloadSpec {
 export function getTaskDownloadSpec(task: Task): TaskDownloadSpec | null {
   if (!task.onshapePartId) return null;
   const methodCode = task.manufacturingMethod.code;
-  const materialCode = task.material?.code ?? '';
   if (methodCode === '3DP') return { format: 'stl', label: 'STL' };
-  if (methodCode === 'LASER') return { format: 'dxf', label: 'DXF' };
-  if (methodCode === 'CNC' && (materialCode.startsWith('PC_') || materialCode.includes('PLATE'))) {
-    return { format: 'dxf', label: 'DXF' };
-  }
+  // DXF export is intentionally hidden in the UI for now; members should export
+  // plate/router files directly from Onshape until the automated flow is final.
   return null;
 }
 
