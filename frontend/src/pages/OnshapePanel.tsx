@@ -37,6 +37,7 @@ type Edit = {
   classification: Cls;
   methodId: string;
   materialId: string;
+  postProcessId: string; // 逐件後處理（空 = 用全域預設）
   quantity: string;
   assigneeId: string; // 逐件指派（僅 admin 顯示）
   isUrgent: boolean; // 逐件急件
@@ -224,6 +225,7 @@ export default function OnshapePanel() {
         classification: row.classification === 'unknown' ? 'made' : row.classification,
         methodId: '',
         materialId: '',
+        postProcessId: '',
         quantity: String(row.quantity || 1),
         assigneeId: '',
         isUrgent: false,
@@ -296,7 +298,11 @@ export default function OnshapePanel() {
           classification: 'made',
           manufacturingMethodId: Number(e.methodId || methodId),
           materialId: e.materialId ? Number(e.materialId) : materialId ? Number(materialId) : null,
-          postProcessId: postProcessId ? Number(postProcessId) : null,
+          postProcessId: e.postProcessId
+            ? Number(e.postProcessId)
+            : postProcessId
+              ? Number(postProcessId)
+              : null,
           quantity: Number(e.quantity) || 1,
           ...(isAdmin && e.assigneeId ? { assigneeId: e.assigneeId } : {}),
           ...(e.isUrgent ? { isUrgent: true } : {}),
@@ -706,7 +712,7 @@ export default function OnshapePanel() {
             </label>
           </div>
           <label className="block text-xs font-medium text-slate-700">
-            後處理（套用到全部加工件）
+            預設後處理（逐件可覆寫）
             <select value={postProcessId} onChange={(e) => setPostProcessId(e.target.value)} className={inputCls}>
               <option value="">無</option>
               {postProcesses.map((o) => (
@@ -772,7 +778,7 @@ export default function OnshapePanel() {
           ) : (
             <p className="text-[11px] text-slate-500">
               加工 {liveMade.length} · COTS {liveCots.length} · 跳過 {liveSkip.length} · 總列 {allRows.length}
-              ——逐件可切換分類與加工方式/材料
+              ——逐件可切換分類與加工方式/材料/後處理
             </p>
           )}
 
@@ -873,6 +879,20 @@ export default function OnshapePanel() {
                       title="數量"
                     />
                   </div>
+                )}
+
+                {showDetails && (
+                  <select
+                    value={e.postProcessId}
+                    onChange={(ev) => setEdit(row.rowKey, { postProcessId: ev.target.value })}
+                    className={`${cellCls} mt-1.5`}
+                    title="後處理"
+                  >
+                    <option value="">{postProcessId ? '後處理：(預設)' : '後處理：無'}</option>
+                    {postProcesses.map((o) => (
+                      <option key={o.id} value={o.id}>後處理：{o.label}</option>
+                    ))}
+                  </select>
                 )}
 
                 {showDetails && isAdmin && (
