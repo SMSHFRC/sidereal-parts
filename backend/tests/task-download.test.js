@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertDownloadPermission, downloadSpecForTask } from '../src/utils/taskDownload.js';
-import { assertValidDxf, downloadFilename, stepExportPayload } from '../src/services/onshape.service.js';
+import { assertValidDxf, downloadFilename, stepExportPayload, stepExportRefs } from '../src/services/onshape.service.js';
 
 const taskFor = (methodCode, materialCode = null) => ({
   manufacturingMethod: { code: methodCode },
@@ -44,6 +44,32 @@ test('DXF conversion requests a STEP export for one Onshape part', () => {
   assert.equal(payload.units, 'millimeter');
   assert.equal(payload.zipSingleFileOutput, false);
   assert.equal(payload.configuration, 'default');
+});
+
+test('DXF export falls back to the source workspace when the stored ref is a microversion', () => {
+  const refs = stepExportRefs({
+    drawingUrl:
+      'https://cad.onshape.com/documents/837f81e033220942d05f09ec/w/0ded200efc302a87e1954109/e/f58bce1d42a9290b9146408e',
+    onshapeDid: '837f81e033220942d05f09ec',
+    onshapeWvm: 'm',
+    onshapeWvmId: 'a603d9c33817ad2f296957b1',
+    onshapeEid: 'c79c1fa9305f99dff3d584c8',
+  });
+
+  assert.deepEqual(refs, [
+    {
+      did: '837f81e033220942d05f09ec',
+      wvm: 'm',
+      wvmId: 'a603d9c33817ad2f296957b1',
+      eid: 'c79c1fa9305f99dff3d584c8',
+    },
+    {
+      did: '837f81e033220942d05f09ec',
+      wvm: 'w',
+      wvmId: '0ded200efc302a87e1954109',
+      eid: 'c79c1fa9305f99dff3d584c8',
+    },
+  ]);
 });
 
 test('DXF response validation rejects ZIP and accepts ASCII DXF', () => {

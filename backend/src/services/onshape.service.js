@@ -227,16 +227,63 @@ export const stepExportPayload = (task) => ({
   ...(task.onshapeConfig ? { configuration: task.onshapeConfig } : {}),
 });
 
-async function exportStepDxf(userId, task) {
-  const response = await apiDownloadFetch(
-    userId,
-    `/documents/d/${task.onshapeDid}/${task.onshapeWvm}/${task.onshapeWvmId}/e/${task.onshapeEid}/export`,
+export const stepExportRefs = (task) => {
+  const refs = [
     {
-      method: 'POST',
-      label: 'Onshape STEP 匯出',
-      body: stepExportPayload(task),
+      did: task.onshapeDid,
+      wvm: task.onshapeWvm,
+      wvmId: task.onshapeWvmId,
+      eid: task.onshapeEid,
     },
-  );
+  ];
+
+  const source = parseOnshapeUrl(task.drawingUrl);
+  if (task.onshapeWvm === 'm' && source?.did === task.onshapeDid && source.wvm !== 'm') {
+    refs.push({
+      did: task.onshapeDid,
+      wvm: source.wvm,
+      wvmId: source.wvmId,
+      eid: task.onshapeEid,
+    });
+  }
+
+  const seen = new Set();
+  return refs.filter((ref) => {
+    if (!ref.did || !ref.wvm || !ref.wvmId || !ref.eid) return false;
+    const key = `${ref.did}/${ref.wvm}/${ref.wvmId}/${ref.eid}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+async function exportStepDxf(userId, task) {
+  let response;
+  let lastNotFound = null;
+
+  for (const ref of stepExportRefs(task)) {
+    try {
+      response = await apiDownloadFetch(
+        userId,
+        `/documents/d/${ref.did}/${ref.wvm}/${ref.wvmId}/e/${ref.eid}/export`,
+        {
+          method: 'POST',
+          label: 'Onshape STEP 匯出',
+          body: stepExportPayload(task),
+        },
+      );
+      break;
+    } catch (error) {
+      if (error instanceof ApiError && error.statusCode === 404 && task.onshapeWvm === 'm') {
+        lastNotFound = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (!response) throw lastNotFound ?? ApiError.notFound('Onshape 找不到此零件或匯出檔案');
+
   const stepBuffer = Buffer.from(await response.arrayBuffer());
   assertValidStep(stepBuffer);
   try {
