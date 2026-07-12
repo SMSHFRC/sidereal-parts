@@ -7,7 +7,20 @@ export async function nextPartNumber(tx, prefix, pad = 4) {
     create: { prefix, lastValue: 1 },
     update: { lastValue: { increment: 1 } },
   });
-  const value = seq.lastValue; // BigInt
+  let value = seq.lastValue; // BigInt
+
+  // 自我修復：計數器若落後於實際最大序號（資料曾被清空/還原、或計數器未同步），
+  // 直接跳到最大序號之後，避免產生已存在的零件編號（唯一鍵衝突）。
+  const maxRow = await tx.task.findFirst({
+    where: { partNumberPrefix: prefix },
+    orderBy: { partNumberSeq: 'desc' },
+    select: { partNumberSeq: true },
+  });
+  if (maxRow && maxRow.partNumberSeq >= value) {
+    value = maxRow.partNumberSeq + 1n;
+    await tx.taskNumberSequence.update({ where: { prefix }, data: { lastValue: value } });
+  }
+
   const partNumber = `${prefix}-${value.toString().padStart(pad, '0')}`;
   return { partNumber, seq: value };
 }
