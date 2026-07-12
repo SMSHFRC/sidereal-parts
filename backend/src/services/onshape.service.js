@@ -304,7 +304,7 @@ async function exportStepDxf(userId, task) {
   let stepBuffer;
   let lastNotFound = null;
 
-  for (const ref of stepExportRefs(task)) {
+  for (const ref of stepExportRefs(task).filter((candidate) => candidate.wvm === 'w' || candidate.wvm === 'v')) {
     try {
       const translation = await apiFetch(
         userId,
