@@ -261,6 +261,7 @@ export interface OnshapeBomItem {
   name: string | null;
   quantity: number;
   material: string | null;
+  dimensions: string | null;
   partNumber: string | null;
   sourceDocumentId: string | null;
   sourceElementId: string | null;

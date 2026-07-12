@@ -50,6 +50,21 @@ test('classifyBomRow: team part numbers and material stay made', () => {
   assert.equal(row.classificationReason, 'team_part_number');
 });
 
+test('classifyBomRow: rounded hex shaft name length converts cm to mm dimensions', () => {
+  const row = classifyBomRow(
+    {
+      name: '**3.54 cm. Rounded Hex Shaft',
+      quantity: 1,
+      partNumber: 'ARM-0062',
+      material: '1/2 Hex Shaft',
+      itemSource: { documentId: 'root-doc', partId: 'part-d' },
+    },
+    'root-doc',
+  );
+  assert.equal(row.classification, 'made');
+  assert.equal(row.dimensions, '35.40 mm');
+});
+
 test('classifyBomRow: empty rows stay unknown', () => {
   const row = classifyBomRow(
     {

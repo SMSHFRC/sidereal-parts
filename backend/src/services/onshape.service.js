@@ -266,6 +266,17 @@ const TEAM_PART_NUMBER = /^[A-Z]{2,6}-\d{3,5}$/;
 const EMPTY_PROCESS_VALUES = new Set(['', '-', '--', 'n/a', 'na', 'none', 'null']);
 
 const normalizedText = (value) => String(value ?? '').trim();
+const inferBomDimensions = (row) => {
+  const candidates = [row.name, row.description];
+  for (const value of candidates) {
+    const text = normalizedText(value);
+    if (!/\bRounded\s+Hex\s+Shaft\b/i.test(text)) continue;
+    const match = text.match(/(\d+(?:\.\d+)?)\s*cm\b/i);
+    if (!match) continue;
+    return `${(Number(match[1]) * 10).toFixed(2)} mm`;
+  }
+  return null;
+};
 const hasValue = (value) => {
   const text = normalizedText(value);
   return Boolean(text && !EMPTY_PROCESS_VALUES.has(text.toLowerCase()));
@@ -347,6 +358,7 @@ export const classifyBomRow = (row, rootDid) => {
     sourceConfig: sourceConfig(src) ?? null,
     sourceVersionId: sourceVersionId(src) ?? null,
     sourceMicroversionId: sourceMicroversionId(src) ?? null,
+    dimensions: row.dimensions ?? inferBomDimensions(row),
     classification,
     classificationReason,
     cotsReason: classification === 'cots' ? classificationReason : null,
@@ -740,6 +752,7 @@ export const onshapeService = {
           onshapeThumbnailUrl: thumbnailUrl,
           onshapeImageMeta: imageMeta,
           importBatchId: batch.id,
+          dimensions: item.dimensions ?? null,
           // 逐件指派（僅 admin 會帶到這裡；null = 進任務池）
           assigneeId: plan.itemAssigneeId ?? null,
           // 匯入時標記急件
@@ -818,6 +831,7 @@ export const onshapeService = {
               onshapeThumbnailUrl: taskData.onshapeThumbnailUrl,
               onshapeImageMeta: taskData.onshapeImageMeta,
               importBatchId: taskData.importBatchId,
+              dimensions: taskData.dimensions,
               note: taskData.note,
             },
             select: { id: true, partNumber: true, status: true },
