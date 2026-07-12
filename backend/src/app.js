@@ -78,8 +78,14 @@ app.get('/', (_req, res) =>
   }),
 );
 
-// 健康檢查（部署平台探針用）
-app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+// 健康檢查（部署平台探針用）；features 用於確認線上跑的是哪個版本的後端
+app.get('/health', (_req, res) =>
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    features: ['selective-import', 'part-revision', 'cots-thumbnail-version'],
+  }),
+);
 
 // API
 app.use('/api/v1', routes);
