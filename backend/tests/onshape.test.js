@@ -142,6 +142,10 @@ test('建任務帶 Onshape 連結：自動存入 onshape 參照欄位', async ()
   assert.equal(res.body.data.onshapeDid, 'a1b2c3d4e5f6a7b8c9d0e1f2');
   assert.equal(res.body.data.onshapeWvm, 'w');
   assert.equal(res.body.data.onshapeEid, 'fedcba9876543210fedcba98');
+  assert.equal(
+    res.body.data.onshapePartStudioUrl,
+    'https://cad.onshape.com/documents/a1b2c3d4e5f6a7b8c9d0e1f2/w/0123456789abcdef01234567/e/fedcba9876543210fedcba98',
+  );
 });
 
 test('建任務帶非 Onshape 連結：onshape 欄位為 null', async () => {
