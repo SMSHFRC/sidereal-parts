@@ -9,6 +9,7 @@ import {
   FALLBACK_POST_PROCESS_OPTIONS,
   STATUS_LABEL,
   fetchOnshapeThumbnail,
+  fetchOnshapePartThumbnail,
   metaApi,
   onshapeApi,
   robotApi,
@@ -61,6 +62,68 @@ function readPanelRef() {
 
 function makeOnshapeUrl(ref: NonNullable<ReturnType<typeof readPanelRef>>) {
   return `https://cad.onshape.com/documents/${ref.did}/${ref.wvm}/${ref.wvmId}/e/${ref.eid}`;
+}
+
+// 逐件縮圖：預設收合的「下拉」，展開才向 Onshape 算圖（避免一次發數十個算圖請求）
+function RowThumb({
+  row,
+  osRef,
+}: {
+  row: OnshapeBomItem;
+  osRef: NonNullable<ReturnType<typeof readPanelRef>>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [src, setSrc] = useState<string | null>(null);
+  const [state, setState] = useState<'idle' | 'loading' | 'ok' | 'none'>('idle');
+  // 僅同文件、且有 element + partId 的零件可算圖
+  const canLoad =
+    Boolean(row.sourcePartId && row.sourceElementId) &&
+    (!row.sourceDocumentId || row.sourceDocumentId === osRef.did);
+
+  useEffect(() => () => { if (src) URL.revokeObjectURL(src); }, [src]);
+
+  if (!canLoad) return null;
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && state === 'idle') {
+      setState('loading');
+      fetchOnshapePartThumbnail({
+        did: osRef.did,
+        wvm: osRef.wvm,
+        wvmId: osRef.wvmId,
+        eid: row.sourceElementId!,
+        partId: row.sourcePartId!,
+      })
+        .then((u) => {
+          if (u) {
+            setSrc(u);
+            setState('ok');
+          } else setState('none');
+        })
+        .catch(() => setState('none'));
+    }
+  };
+
+  return (
+    <div className="mt-1">
+      <button type="button" onClick={toggle} className="text-[10px] font-medium text-slate-500 underline">
+        {open ? '收合縮圖 ▴' : '看縮圖 ▾'}
+      </button>
+      {open && (
+        <div className="mt-1 flex h-28 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+          {state === 'ok' && src ? (
+            <img src={src} alt={row.name ?? ''} className="h-full w-full object-contain" />
+          ) : state === 'loading' ? (
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500" />
+          ) : (
+            <span className="text-[10px] text-slate-400">無法產生縮圖</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function OnshapePanel() {
@@ -771,6 +834,8 @@ export default function OnshapePanel() {
                     )}
                   </div>
                 </div>
+
+                <RowThumb row={row} osRef={ref} />
 
                 {showDetails && (
                   <div className="mt-1.5 grid grid-cols-3 gap-1.5">
