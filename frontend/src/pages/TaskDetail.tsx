@@ -7,6 +7,7 @@ import {
   fmtTime,
   getTaskDownloadFilename,
   getTaskDownloadSpec,
+  STATUS_LABEL,
   taskApi,
   transitionLabel,
   type PrintMergeCandidate,
@@ -65,6 +66,8 @@ export default function TaskDetail() {
   const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([]);
   const [urgentReason, setUrgentReason] = useState('');
   const [priorityBusy, setPriorityBusy] = useState(false);
+  const [revisions, setRevisions] = useState<Task[]>([]);
+  const [revisionBusy, setRevisionBusy] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -87,6 +90,14 @@ export default function TaskDetail() {
   useEffect(() => {
     setUrgentReason(task?.urgentReason ?? '');
   }, [task?.id, task?.urgentReason]);
+
+  useEffect(() => {
+    if (!task?.id) return;
+    taskApi
+      .revisions(task.id)
+      .then(setRevisions)
+      .catch(() => setRevisions([]));
+  }, [task?.id]);
 
   if (error) return <ErrorBox message={error} onRetry={load} />;
   if (!task || !user) return <Spinner label="載入任務中…" />;
@@ -125,6 +136,25 @@ export default function TaskDetail() {
       setActionError(e instanceof ApiError ? e.message : '急件狀態更新失敗');
     } finally {
       setPriorityBusy(false);
+    }
+  };
+
+  const doCreateRevision = async () => {
+    if (
+      !window.confirm(
+        `建立此零件的新版本（Rev.${task.revision + 1}）？\n\n系統會以目前 Onshape 最新設計建立一個新的加工版本，並封存目前版本（Rev.${task.revision}）。舊版本會完整保留。`,
+      )
+    )
+      return;
+    setActionError('');
+    setRevisionBusy(true);
+    try {
+      const created = await taskApi.createRevision(task.id);
+      setTask(created);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '建立新版本失敗');
+    } finally {
+      setRevisionBusy(false);
     }
   };
 
@@ -274,12 +304,30 @@ export default function TaskDetail() {
 
       <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="font-mono text-lg font-bold text-slate-900">{task.partNumber}</h1>
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="font-mono text-lg font-bold text-slate-900">{task.partNumber}</h1>
+            <span
+              className={`shrink-0 rounded-md px-1.5 py-0.5 text-xs font-bold ${
+                task.revisionStatus === 'archived'
+                  ? 'bg-slate-200 text-slate-500'
+                  : 'bg-slate-900 text-white'
+              }`}
+              title={task.revisionStatus === 'archived' ? '舊版本' : '目前版本'}
+            >
+              Rev.{task.revision}
+            </span>
+          </div>
           <span className="flex shrink-0 items-center gap-1">
             {task.isUrgent && <UrgentBadge />}
             <StatusBadge status={task.status} reviewRejected={task.reviewRejected} />
           </span>
         </div>
+
+        {task.revisionStatus === 'archived' && (
+          <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            這是舊版本（Rev.{task.revision}），已封存保留。目前版本為此零件的最新 Revision。
+          </p>
+        )}
 
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
           <Field label="所屬系統">{task.system.name}</Field>
@@ -345,6 +393,62 @@ export default function TaskDetail() {
 
           {canManagePriority && !priorityEditable && (
             <p className="mt-3 text-xs text-slate-400">任務已開始加工，急件標記已鎖定，無法變更。</p>
+          )}
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-800">版本管理（Revision）</p>
+            <span className="text-xs text-slate-500">目前 Rev.{revisions.find((r) => r.revisionStatus === 'current')?.revision ?? task.revision}</span>
+          </div>
+
+          {revisions.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {revisions.map((rev) => {
+                const isCurrentRow = rev.revisionStatus === 'current';
+                const isThis = rev.id === task.id;
+                return (
+                  <li key={rev.id}>
+                    <Link
+                      to={`/tasks/${rev.id}`}
+                      className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm ${
+                        isThis ? 'bg-white ring-1 ring-slate-300' : 'active:bg-white'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono font-semibold text-slate-800">Rev.{rev.revision}</span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                            isCurrentRow ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'
+                          }`}
+                        >
+                          {isCurrentRow ? 'Current' : 'Archived'}
+                        </span>
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {STATUS_LABEL[rev.status]} · {fmtTime(rev.createdAt)}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {canManagePriority && task.revisionStatus === 'current' && (
+            <button
+              type="button"
+              onClick={doCreateRevision}
+              disabled={revisionBusy}
+              className="mt-3 min-h-10 w-full rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white active:bg-slate-700 disabled:opacity-50"
+            >
+              {revisionBusy ? '建立中…' : `建立新版本（Rev.${task.revision + 1}）`}
+            </button>
+          )}
+          {canManagePriority && task.revisionStatus === 'current' && (
+            <p className="mt-2 text-xs text-slate-400">
+              以目前 Onshape 最新設計建立新的加工版本，Part Number 不變，舊版本會封存保留。
+            </p>
           )}
         </div>
 

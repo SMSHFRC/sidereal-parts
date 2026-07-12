@@ -51,7 +51,14 @@ function Card({
     <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
       <Link to={`/tasks/${t.id}`} className="block active:bg-slate-50">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-sm font-bold text-slate-900">{t.partNumber}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="font-mono text-sm font-bold text-slate-900">{t.partNumber}</span>
+            {t.revision > 1 && (
+              <span className="shrink-0 rounded bg-slate-900 px-1 py-0.5 text-[10px] font-bold text-white">
+                Rev.{t.revision}
+              </span>
+            )}
+          </span>
           <span className="flex shrink-0 items-center gap-1">
             {t.isUrgent && <UrgentBadge />}
             <StatusBadge status={t.status} reviewRejected={t.reviewRejected} />

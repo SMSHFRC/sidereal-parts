@@ -841,3 +841,47 @@ test('急件：開始加工後不可再變更（URGENT_LOCKED）', async () => {
   assert.equal(locked.status, 400);
   assert.equal(locked.body.error.code, 'URGENT_LOCKED');
 });
+
+test('版本管理：Create Revision 建立下一版並封存舊版', async () => {
+  const created = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId['3DP'], quantity: 2 });
+  assert.equal(created.status, 201);
+  const rev1 = created.body.data;
+  assert.equal(rev1.revision, 1);
+  assert.equal(rev1.revisionStatus, 'current');
+  const partNumber = rev1.partNumber;
+
+  // 非建立者、非管理員 → 403
+  const forbidden = await api
+    .post(`/api/v1/tasks/${rev1.id}/revision`)
+    .set(auth(ctx.memberBToken));
+  assert.equal(forbidden.status, 403);
+
+  // 建立者建立新版本
+  const revved = await api.post(`/api/v1/tasks/${rev1.id}/revision`).set(auth(ctx.memberAToken));
+  assert.equal(revved.status, 201);
+  const rev2 = revved.body.data;
+  assert.equal(rev2.revision, 2);
+  assert.equal(rev2.revisionStatus, 'current');
+  assert.equal(rev2.partNumber, partNumber, '版本沿用相同 Part Number');
+  assert.equal(rev2.status, 'pending', '新版本回到任務池');
+  assert.notEqual(rev2.id, rev1.id);
+
+  // 舊版本已封存
+  const oldTask = await api.get(`/api/v1/tasks/${rev1.id}`).set(auth(ctx.memberAToken));
+  assert.equal(oldTask.body.data.revisionStatus, 'archived');
+  assert.equal(oldTask.body.data.supersededById, rev2.id);
+
+  // 版本清單：新到舊，兩版都在
+  const list = await api.get(`/api/v1/tasks/${rev2.id}/revisions`).set(auth(ctx.memberAToken));
+  assert.equal(list.status, 200);
+  const revs = list.body.data.map((t) => t.revision);
+  assert.deepEqual(revs, [2, 1]);
+
+  // 不可從已封存的舊版本再建立版本
+  const again = await api.post(`/api/v1/tasks/${rev1.id}/revision`).set(auth(ctx.memberAToken));
+  assert.equal(again.status, 400);
+  assert.equal(again.body.error.code, 'NOT_CURRENT_REVISION');
+});

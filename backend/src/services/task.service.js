@@ -4,6 +4,7 @@ import { nextPartNumber } from '../utils/partNumber.js';
 import { ROLES } from '../constants/roles.js';
 import { TASK_STATUS, isValidTransition } from '../constants/taskStatus.js';
 import { parseOnshapeUrl } from '../utils/onshapeUrl.js';
+import { onshapeService } from './onshape.service.js';
 
 // M3：drawingUrl 為 Onshape 連結時自動解析出參照欄位（縮圖/零件查詢用）
 const onshapeFields = (drawingUrl) => {
@@ -984,6 +985,116 @@ export const taskService = {
       throw ApiError.badRequest('此任務目前不可接後處理（已被接走或狀態不符）', 'CLAIM_FAILED');
     }
     return withTaskFlags(await prisma.task.findUnique({ where: { id }, include: taskInclude }));
+  },
+
+  // 此零件（同 partNumber）的所有版本，新到舊
+  async revisionsOf(id, actor) {
+    const task = await prisma.task.findUnique({
+      where: { id },
+      select: { partNumber: true },
+    });
+    if (!task) throw ApiError.notFound('任務不存在');
+    const items = await prisma.task.findMany({
+      where: { partNumber: task.partNumber },
+      include: taskInclude,
+      orderBy: { revision: 'desc' },
+    });
+    return items.map(withTaskFlags);
+  },
+
+  // 建立新版本（Create Revision）：以目前 Onshape 最新設計，建立同 partNumber 的下一個 revision。
+  // 舊版本封存保留（狀態/歷史/積分/檔案不動），並凍結其 Onshape 幾何；新版本回到任務池待接單。
+  async createRevision(id, actor) {
+    const current = await prisma.task.findUnique({ where: { id }, include: taskInclude });
+    if (!current) throw ApiError.notFound('任務不存在');
+    if (actor.role !== ROLES.ADMIN && current.creatorId !== actor.id) {
+      throw ApiError.forbidden('僅建立者或管理員可建立新版本');
+    }
+    if (current.revisionStatus !== 'current') {
+      throw ApiError.badRequest('僅能從目前版本建立新版本', 'NOT_CURRENT_REVISION');
+    }
+
+    // best-effort：把舊版本凍結在目前 microversion（僅對活動工作區的 Onshape 零件）
+    let freezeMicroversion = null;
+    if (current.onshapeDid && current.onshapeWvm === 'w') {
+      try {
+        freezeMicroversion = await onshapeService.freezeMicroversion(actor.id, {
+          did: current.onshapeDid,
+          wvm: current.onshapeWvm,
+          wvmId: current.onshapeWvmId,
+        });
+      } catch {
+        freezeMicroversion = null; // Onshape 未連結或讀取失敗時，仍可建立版本
+      }
+    }
+
+    const newTask = await prisma.$transaction(async (tx) => {
+      // 取此 partNumber 目前最大 revision（避免並發時撞號）
+      const top = await tx.task.findFirst({
+        where: { partNumber: current.partNumber },
+        orderBy: { revision: 'desc' },
+        select: { id: true, revision: true },
+      });
+      const nextRev = (top?.revision ?? current.revision) + 1;
+
+      // 建立新版本（沿用舊版的 Onshape 活動工作區參照 = 目前最新設計）
+      const created = await tx.task.create({
+        data: {
+          partNumber: current.partNumber,
+          partNumberPrefix: current.partNumberPrefix,
+          partNumberSeq: current.partNumberSeq,
+          revision: nextRev,
+          revisionStatus: 'current',
+          manufacturingMethodId: current.manufacturingMethodId,
+          systemId: current.systemId,
+          robotId: current.robotId,
+          subsystemId: current.subsystemId,
+          materialId: current.materialId,
+          postProcessId: current.postProcessId,
+          quantity: current.quantity,
+          rewardPoints: current.rewardPoints,
+          creatorId: actor.id,
+          drawingUrl: current.drawingUrl,
+          onshapeDid: current.onshapeDid,
+          onshapeWvm: current.onshapeWvm,
+          onshapeWvmId: current.onshapeWvmId,
+          onshapeEid: current.onshapeEid,
+          onshapePartId: current.onshapePartId,
+          onshapeConfig: current.onshapeConfig,
+          onshapeRevision: current.onshapeRevision,
+          onshapeThumbnailUrl: current.onshapeThumbnailUrl,
+          onshapeImageMeta: current.onshapeImageMeta,
+          importBatchId: current.importBatchId,
+          dimensions: current.dimensions,
+          note: current.note,
+          status: TASK_STATUS.PENDING,
+        },
+        include: taskInclude,
+      });
+
+      // 封存舊版本；有取到 microversion 就凍結其幾何（'w' → 'm'）
+      await tx.task.update({
+        where: { id: current.id },
+        data: {
+          revisionStatus: 'archived',
+          supersededById: created.id,
+          ...(freezeMicroversion ? { onshapeWvm: 'm', onshapeWvmId: freezeMicroversion } : {}),
+        },
+      });
+
+      await tx.taskStatusHistory.create({
+        data: {
+          taskId: created.id,
+          fromStatus: null,
+          toStatus: TASK_STATUS.PENDING,
+          changedBy: actor.id,
+          note: `建立 Rev.${nextRev}（來自 Rev.${current.revision}）`,
+        },
+      });
+      return created;
+    });
+
+    return withTaskFlags(newTask);
   },
 
   async remove(id, actor) {

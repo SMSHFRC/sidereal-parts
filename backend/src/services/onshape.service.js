@@ -948,6 +948,17 @@ export const onshapeService = {
     };
   },
 
+  // 取得目前 workspace 的 microversion，用來把「舊版本」凍結在建立新版本當下的幾何，
+  // 使舊 revision 之後下載到的 STEP/STL/DXF 不會被新設計覆蓋。best-effort。
+  async freezeMicroversion(userId, { did, wvm, wvmId }) {
+    const data = await apiFetch(
+      userId,
+      `/documents/d/${did}/${wvm}/${wvmId}/currentmicroversion`,
+      { label: 'Onshape 版本讀取' },
+    );
+    return data?.microversion ?? null;
+  },
+
   async thumbnail(userId, { did, wvm, wvmId, eid }) {
     const res = await apiFetch(
       userId,

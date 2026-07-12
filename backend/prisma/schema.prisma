@@ -246,9 +246,14 @@ model TaskNumberSequence {
 
 model Task {
   id                    BigInt     @id @default(autoincrement())
-  partNumber            String     @unique @map("part_number")
+  partNumber            String     @map("part_number")
   partNumberPrefix      String     @map("part_number_prefix")
   partNumberSeq         BigInt     @map("part_number_seq")
+
+  // 版本管理：同一 partNumber 可有多個 revision，只有一個 current，其餘 archived
+  revision              Int        @default(1)
+  revisionStatus        String     @default("current") @map("revision_status") // 'current' | 'archived'
+  supersededById        BigInt?    @map("superseded_by_id") // 被哪個新版本取代（封存時回填）
 
   manufacturingMethodId Int        @map("manufacturing_method_id")
   systemId              Int        @map("system_id")
@@ -306,7 +311,10 @@ model Task {
   printBatchItems     PrintBatchTask[]
   assignmentTransfers TaskAssignmentTransfer[]
 
-  @@unique([partNumberPrefix, partNumberSeq])
+  @@unique([partNumber, revision])
+  @@unique([partNumberPrefix, partNumberSeq, revision])
+  @@index([partNumber])
+  @@index([revisionStatus])
   @@index([assigneeId])
   @@index([postProcessorId])
   @@index([isUrgent])

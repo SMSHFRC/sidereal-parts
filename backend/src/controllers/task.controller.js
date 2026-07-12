@@ -68,6 +68,16 @@ export const taskController = {
     res.json({ success: true, data: serialize(result) });
   }),
 
+  revisions: asyncHandler(async (req, res) => {
+    const result = await taskService.revisionsOf(req.params.id, req.user);
+    res.json({ success: true, data: serialize(result) });
+  }),
+
+  createRevision: asyncHandler(async (req, res) => {
+    const result = await taskService.createRevision(req.params.id, req.user);
+    res.status(201).json({ success: true, data: serialize(result) });
+  }),
+
   claim: asyncHandler(async (req, res) => {
     const result = await taskService.claim(req.params.id, req.user);
     res.json({ success: true, data: serialize(result) });

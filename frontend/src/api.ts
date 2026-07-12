@@ -65,6 +65,9 @@ export interface Task {
   partNumber: string;
   partNumberPrefix: string;
   partNumberSeq: string;
+  revision: number;
+  revisionStatus: 'current' | 'archived';
+  supersededById: string | null;
   manufacturingMethodId: number;
   systemId: number;
   robotId: string | null;
@@ -586,6 +589,9 @@ export const taskApi = {
     api<PrintBatch>(`/tasks/print-batches/${batchId}/complete`, { method: 'POST' }),
   claimPostProcess: (id: string) =>
     api<Task>(`/tasks/${id}/claim-post-process`, { method: 'POST' }),
+  // 版本管理（Revision）
+  revisions: (id: string) => api<Task[]>(`/tasks/${id}/revisions`),
+  createRevision: (id: string) => api<Task>(`/tasks/${id}/revision`, { method: 'POST' }),
   downloadFile: (id: string, fallbackFilename: string) =>
     downloadFile(`/tasks/${id}/download`, fallbackFilename),
 };

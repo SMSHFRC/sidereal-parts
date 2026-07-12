@@ -32,6 +32,8 @@ router.post('/:id/simulate-timeout', requireRole(ROLES.ADMIN), validate(getTaskS
 router.post('/:id/extend-time', requireRole(ROLES.ADMIN), validate(getTaskSchema), taskController.extendMachiningTime);
 router.post('/:id/reminder-response', validate(reminderResponseSchema), taskController.respondStatusReminder);
 router.patch('/:id/priority', validate(updatePrioritySchema), taskController.updatePriority);
+router.get('/:id/revisions', validate(getTaskSchema), taskController.revisions);
+router.post('/:id/revision', validate(getTaskSchema), taskController.createRevision);
 router.get('/:id/print-merge-candidates', validate(getTaskSchema), taskController.printMergeCandidates);
 router.post('/:id/print-batch/start', validate(startPrintBatchSchema), taskController.startPrintBatch);
 router.get('/:id', validate(getTaskSchema), taskController.getById);
