@@ -7,6 +7,15 @@ import { Empty, ErrorBox, Spinner, StatusBadge } from '../ui';
 type ColKey = 'todo' | 'doing' | 'done';
 type ViewKey = 'pool' | 'assigned' | 'created' | 'all';
 
+const RECENT_DONE_HOURS = 24;
+const RECENT_DONE_MS = RECENT_DONE_HOURS * 60 * 60 * 1000;
+
+function isRecentDoneTask(t: Task, now = Date.now()) {
+  if (!['completed', 'rejected', 'cancelled'].includes(t.status)) return false;
+  const finishedAt = t.currentStatusChangedAt ?? t.updatedAt;
+  return now - new Date(finishedAt).getTime() <= RECENT_DONE_MS;
+}
+
 const COLS: { key: ColKey; title: string; match: (t: Task) => boolean }[] = [
   { key: 'todo', title: '待接受', match: (t) => t.status === 'pending' },
   {
@@ -16,8 +25,8 @@ const COLS: { key: ColKey; title: string; match: (t: Task) => boolean }[] = [
   },
   {
     key: 'done',
-    title: '已完成 / 結案',
-    match: (t) => ['completed', 'rejected', 'cancelled'].includes(t.status),
+    title: '最近完成 / 結案',
+    match: (t) => isRecentDoneTask(t),
   },
 ];
 
