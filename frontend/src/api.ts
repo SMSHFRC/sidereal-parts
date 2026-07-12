@@ -277,6 +277,7 @@ export interface OnshapeImportItem {
   postProcessId?: number | null;
   quantity?: number;
   assigneeId?: string | null; // 逐件指派（僅 admin）
+  isUrgent?: boolean; // 匯入時標記急件
 }
 
 // 此組合（assembly）加工進度

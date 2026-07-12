@@ -38,6 +38,7 @@ type Edit = {
   materialId: string;
   quantity: string;
   assigneeId: string; // 逐件指派（僅 admin 顯示）
+  isUrgent: boolean; // 逐件急件
 };
 type View = 'import' | 'progress' | 'add';
 
@@ -157,6 +158,7 @@ export default function OnshapePanel() {
         materialId: '',
         quantity: String(row.quantity || 1),
         assigneeId: '',
+        isUrgent: false,
       };
     }
     setEdits(init);
@@ -222,6 +224,7 @@ export default function OnshapePanel() {
           postProcessId: postProcessId ? Number(postProcessId) : null,
           quantity: Number(e.quantity) || 1,
           ...(isAdmin && e.assigneeId ? { assigneeId: e.assigneeId } : {}),
+          ...(e.isUrgent ? { isUrgent: true } : {}),
         };
       });
       setResult(
@@ -654,10 +657,24 @@ export default function OnshapePanel() {
                       x{row.quantity || 0} · {row.material ?? '無材料'}
                     </p>
                   </div>
-                  <div className="flex w-32 shrink-0 gap-1">
-                    <button onClick={() => setEdit(row.rowKey, { classification: 'made' })} className={clsBtn(isMade, 'bg-slate-900 text-white')}>加工</button>
-                    <button onClick={() => setEdit(row.rowKey, { classification: 'cots' })} className={clsBtn(e.classification === 'cots', 'bg-amber-500 text-white')}>COTS</button>
-                    <button onClick={() => setEdit(row.rowKey, { classification: 'skip' })} className={clsBtn(e.classification === 'skip', 'bg-slate-400 text-white')}>跳過</button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <div className="flex w-32 gap-1">
+                      <button onClick={() => setEdit(row.rowKey, { classification: 'made' })} className={clsBtn(isMade, 'bg-slate-900 text-white')}>加工</button>
+                      <button onClick={() => setEdit(row.rowKey, { classification: 'cots' })} className={clsBtn(e.classification === 'cots', 'bg-amber-500 text-white')}>COTS</button>
+                      <button onClick={() => setEdit(row.rowKey, { classification: 'skip' })} className={clsBtn(e.classification === 'skip', 'bg-slate-400 text-white')}>跳過</button>
+                    </div>
+                    {isMade && (
+                      <button
+                        type="button"
+                        onClick={() => setEdit(row.rowKey, { isUrgent: !e.isUrgent })}
+                        title="標記急件"
+                        className={`min-h-8 w-8 rounded-md text-[11px] font-bold ${
+                          e.isUrgent ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-400'
+                        }`}
+                      >
+                        急
+                      </button>
+                    )}
                   </div>
                 </div>
 

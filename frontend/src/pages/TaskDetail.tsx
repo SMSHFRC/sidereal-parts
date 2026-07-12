@@ -106,6 +106,7 @@ export default function TaskDetail() {
   const showClaimPost = canClaimPostProcess(task, user);
   const downloadSpec = getTaskDownloadSpec(task);
   const canManagePriority = user.role === 'admin' || task.creator.id === user.id;
+  const priorityEditable = task.status === 'pending' || task.status === 'accepted';
 
   const togglePriority = async () => {
     const nextUrgent = !task.isUrgent;
@@ -313,7 +314,7 @@ export default function TaskDetail() {
             {task.isUrgent && <UrgentBadge />}
           </div>
 
-          {canManagePriority && !task.isUrgent && (
+          {canManagePriority && priorityEditable && !task.isUrgent && (
             <label className="mt-3 block text-xs font-medium text-slate-600">
               急件原因（選填）
               <textarea
@@ -327,7 +328,7 @@ export default function TaskDetail() {
             </label>
           )}
 
-          {canManagePriority && (
+          {canManagePriority && priorityEditable && (
             <button
               type="button"
               onClick={togglePriority}
@@ -340,6 +341,10 @@ export default function TaskDetail() {
             >
               {priorityBusy ? '更新中…' : task.isUrgent ? '取消急件' : '標記為急件'}
             </button>
+          )}
+
+          {canManagePriority && !priorityEditable && (
+            <p className="mt-3 text-xs text-slate-400">任務已開始加工，急件標記已鎖定，無法變更。</p>
           )}
         </div>
 

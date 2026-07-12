@@ -596,6 +596,7 @@ export const onshapeService = {
         itemPostProcessId: ov?.postProcessId ?? postProcessId ?? null,
         quantity: Math.max(1, Number(ov?.quantity ?? row.quantity) || 1),
         itemAssigneeId: ov?.assigneeId ?? null,
+        itemUrgent: ov?.isUrgent === true,
       });
     }
 
@@ -695,6 +696,10 @@ export const onshapeService = {
           importBatchId: batch.id,
           // 逐件指派（僅 admin 會帶到這裡；null = 進任務池）
           assigneeId: plan.itemAssigneeId ?? null,
+          // 匯入時標記急件
+          ...(plan.itemUrgent
+            ? { isUrgent: true, urgentById: userId, urgentAt: new Date(), urgentReason: '匯入時標記' }
+            : {}),
           note:
             [
               item.name ? `Onshape: ${item.name}` : null,
@@ -716,6 +721,10 @@ export const onshapeService = {
               subsystemId: taskData.subsystemId,
               // 既有任務僅在有明確指派時更新（避免把已接單的清掉）
               ...(plan.itemAssigneeId != null ? { assigneeId: plan.itemAssigneeId } : {}),
+              // 匯入標急件：只在既有任務尚未開始加工時套用
+              ...(plan.itemUrgent && ['pending', 'accepted'].includes(existing.status)
+                ? { isUrgent: true, urgentById: userId, urgentAt: new Date(), urgentReason: '匯入時標記' }
+                : {}),
               postProcessId: taskData.postProcessId,
               drawingUrl: taskData.drawingUrl,
               onshapeWvm: taskData.onshapeWvm,

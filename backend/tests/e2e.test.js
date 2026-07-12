@@ -799,3 +799,45 @@ test('3D 合併列印需確認他人任務轉移並保留轉移紀錄', async ()
   assert.equal(transferRows[0].fromAssigneeId.toString(), other.body.data.user.id);
   assert.equal(transferRows[0].toAssigneeId.toString(), owner.body.data.user.id);
 });
+
+test('急件：開始加工後不可再變更（URGENT_LOCKED）', async () => {
+  // 3DP：非阻斷式設備，可同時多個 processing，避免與其他測試互卡
+  const worker = await api
+    .post('/api/v1/auth/register')
+    .send({ username: `urgent_worker_${Date.now()}`, password: pw, role: 'member' });
+  assert.equal(worker.status, 201);
+  const workerToken = worker.body.data.accessToken;
+
+  const created = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({ systemId: 1, manufacturingMethodId: ctx.methodId['3DP'], quantity: 1 });
+  assert.equal(created.status, 201);
+  const taskId = created.body.data.id;
+
+  // pending 階段：建立者可標急件
+  const mark = await api
+    .patch(`/api/v1/tasks/${taskId}/priority`)
+    .set(auth(ctx.memberAToken))
+    .send({ isUrgent: true, reason: '比賽在即' });
+  assert.equal(mark.status, 200);
+  assert.equal(mark.body.data.isUrgent, true);
+
+  // 接單 → 開始加工（用全新 member 避免「同時只能一個 processing」衝突）
+  const claim = await api.post(`/api/v1/tasks/${taskId}/claim`).set(auth(workerToken));
+  assert.equal(claim.status, 200);
+  const proc = await api
+    .patch(`/api/v1/tasks/${taskId}/status`)
+    .set(auth(workerToken))
+    .send({ status: 'processing' });
+  assert.equal(proc.status, 200);
+  assert.equal(proc.body.data.status, 'processing');
+
+  // 開始加工後：不可再變更急件（連 admin 也不行）
+  const locked = await api
+    .patch(`/api/v1/tasks/${taskId}/priority`)
+    .set(auth(ctx.adminToken))
+    .send({ isUrgent: false });
+  assert.equal(locked.status, 400);
+  assert.equal(locked.body.error.code, 'URGENT_LOCKED');
+});

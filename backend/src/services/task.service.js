@@ -349,10 +349,17 @@ export const taskService = {
   },
 
   async updatePriority(id, { isUrgent, reason }, actor) {
-    const task = await prisma.task.findUnique({ where: { id }, select: { id: true, creatorId: true } });
+    const task = await prisma.task.findUnique({
+      where: { id },
+      select: { id: true, creatorId: true, status: true },
+    });
     if (!task) throw ApiError.notFound('任務不存在');
     if (actor.role !== ROLES.ADMIN && task.creatorId !== actor.id) {
       throw ApiError.forbidden('僅建立者或管理員可調整急件狀態');
+    }
+    // 已開始加工（processing 以後）就不能再變更急件
+    if (![TASK_STATUS.PENDING, TASK_STATUS.ACCEPTED].includes(task.status)) {
+      throw ApiError.badRequest('任務已開始加工，不可變更急件標記', 'URGENT_LOCKED');
     }
 
     return withTaskFlags(await prisma.task.update({
