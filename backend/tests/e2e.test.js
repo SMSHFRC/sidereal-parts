@@ -251,7 +251,7 @@ test('未帶 token 取任務清單 401', async () => {
 });
 
 test('所有 member 可見全部任務', async () => {
-  const res = await api.get('/api/v1/tasks').set(auth(ctx.memberBToken));
+  const res = await api.get('/api/v1/tasks?limit=100').set(auth(ctx.memberBToken));
   assert.equal(res.status, 200);
   assert.ok(res.body.data.items.some((t) => t.id === ctx.taskId));
 });
