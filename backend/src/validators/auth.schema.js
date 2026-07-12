@@ -5,7 +5,8 @@ const username = z
   .trim()
   .min(2, '使用者名稱至少 2 字元')
   .max(50)
-  .regex(/^[a-zA-Z0-9_.-]+$/, '使用者名稱只能包含英數字、_、.、-');
+  .regex(/^[a-zA-Z0-9_. -]+$/, '使用者名稱只能包含英數字、空白、_、.、-')
+  .regex(/^\S(?:.*\S)?$/, '使用者名稱開頭與結尾不可是空白');
 
 // 放寬密碼限制：只保留長度上限，避免註冊/改密碼被複雜規則卡住
 const password = z.string().min(1, '密碼不可為空').max(128);
@@ -21,7 +22,7 @@ export const registerSchema = {
 
 export const loginSchema = {
   body: z.object({
-    username: z.string().trim().min(1),
+    username,
     password: z.string().min(1),
   }),
 };

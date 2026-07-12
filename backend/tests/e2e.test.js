@@ -87,6 +87,17 @@ test('弱密碼註冊被擋（驗證層）', async () => {
   assert.equal(res.body.data.user.role, 'member');
 });
 
+test('member 帳號可保留中間空白', async () => {
+  const username = `space user ${S}`;
+  const res = await api.post('/api/v1/auth/register').send({ username, password: '123', role: 'member' });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.data.user.username, username);
+
+  const login = await api.post('/api/v1/auth/login').send({ username, password: '123' });
+  assert.equal(login.status, 200);
+  assert.equal(login.body.data.user.username, username);
+});
+
 test('主檔列表端點回傳四組 options', async () => {
   const res = await api.get('/api/v1/meta/options').set(auth(ctx.memberAToken));
   assert.equal(res.status, 200);

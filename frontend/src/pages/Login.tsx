@@ -58,7 +58,7 @@ export default function Login() {
     setError('');
     setBusy(true);
     try {
-      await login(username.trim(), password);
+      await login(username, password);
       nav(returnTo, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '登入失敗，請確認帳號密碼');
