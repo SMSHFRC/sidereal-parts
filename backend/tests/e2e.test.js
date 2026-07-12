@@ -346,6 +346,21 @@ test('同一帳號建任務並自己接單，可完整完成且積分正確', as
   assert.equal(me.body.data.totalPoints, '15');
 });
 
+test('看板分頁會各自回傳最新完成任務', async () => {
+  const [pool, assigned, created, all] = await Promise.all([
+    api.get('/api/v1/tasks?scope=pool&board=true&limit=100').set(auth(ctx.memberBToken)),
+    api.get('/api/v1/tasks?scope=assigned&board=true&limit=100').set(auth(ctx.memberBToken)),
+    api.get('/api/v1/tasks?scope=created&board=true&limit=100').set(auth(ctx.memberAToken)),
+    api.get('/api/v1/tasks?scope=all&board=true&limit=100').set(auth(ctx.memberCToken)),
+  ]);
+
+  for (const response of [pool, assigned, created, all]) assert.equal(response.status, 200);
+  assert.equal(pool.body.data.items.some((task) => task.id === ctx.taskId), false);
+  assert.equal(assigned.body.data.items.some((task) => task.id === ctx.taskId && task.status === 'completed'), true);
+  assert.equal(created.body.data.items.some((task) => task.id === ctx.taskId && task.status === 'completed'), true);
+  assert.equal(all.body.data.items.some((task) => task.id === ctx.taskId && task.status === 'completed'), true);
+});
+
 test('積分轉讓：member B 轉 30 給 member C', async () => {
   const res = await api
     .post('/api/v1/points/transfer')

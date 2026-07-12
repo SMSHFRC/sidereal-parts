@@ -30,11 +30,11 @@ const COLS: { key: ColKey; title: string; match: (t: Task) => boolean }[] = [
   },
 ];
 
-const VIEWS: { key: ViewKey; label: string; match: (t: Task, me: string) => boolean }[] = [
-  { key: 'pool', label: '任務池', match: (t) => t.status === 'pending' && !t.assignee },
-  { key: 'assigned', label: '我接的', match: (t, me) => t.assignee?.id === me || t.postProcessor?.id === me },
-  { key: 'created', label: '我建的', match: (t, me) => t.creator.id === me },
-  { key: 'all', label: '全部', match: () => true },
+const VIEWS: { key: ViewKey; label: string }[] = [
+  { key: 'pool', label: '任務池' },
+  { key: 'assigned', label: '我接的' },
+  { key: 'created', label: '我建的' },
+  { key: 'all', label: '全部' },
 ];
 
 function Card({
@@ -121,13 +121,8 @@ function ClaimNotice({ message, kind }: { message: string; kind: 'error' | 'ok' 
   );
 }
 
-function useVisibleTasks(tasks: Task[], me: string, activeView: ViewKey) {
-  const counts = Object.fromEntries(
-    VIEWS.map((v) => [v.key, tasks.filter((t) => v.match(t, me)).length]),
-  ) as Record<ViewKey, number>;
-  const view = VIEWS.find((v) => v.key === activeView) ?? VIEWS[0];
-  const visible = tasks
-    .filter((t) => view.match(t, me))
+function sortVisibleTasks(tasks: Task[]) {
+  return tasks
     .map((task, index) => ({ task, index }))
     .sort((a, b) => {
       const priority = (task: Task) => {
@@ -140,12 +135,12 @@ function useVisibleTasks(tasks: Task[], me: string, activeView: ViewKey) {
       return priority(a.task) - priority(b.task) || a.index - b.index;
     })
     .map(({ task }) => task);
-  return { counts, visible };
 }
 
 export default function Board() {
   const { user, refreshMe } = useAuth();
-  const [tasks, setTasks] = useState<Task[] | null>(null);
+  const [tasksByView, setTasksByView] = useState<Record<ViewKey, Task[]> | null>(null);
+  const [counts, setCounts] = useState<Record<ViewKey, number> | null>(null);
   const [error, setError] = useState('');
   const [active, setActive] = useState<ColKey>('todo');
   const [activeView, setActiveView] = useState<ViewKey>('pool');
@@ -156,29 +151,34 @@ export default function Board() {
 
   const load = useCallback(() => {
     setError('');
-    setTasks(null);
-    taskApi
-      .list()
-      .then((p) => setTasks(p.items))
+    Promise.all(VIEWS.map((view) => taskApi.list(`scope=${view.key}&board=true`)))
+      .then((pages) => {
+        setTasksByView(
+          Object.fromEntries(VIEWS.map((view, index) => [view.key, pages[index].items])) as Record<ViewKey, Task[]>,
+        );
+        setCounts(
+          Object.fromEntries(VIEWS.map((view, index) => [view.key, pages[index].total])) as Record<ViewKey, number>,
+        );
+      })
       .catch((e) => setError(e instanceof ApiError ? e.message : '載入失敗'));
   }, []);
 
   useEffect(load, [load]);
 
   if (error) return <ErrorBox message={error} onRetry={load} />;
-  if (!tasks || !user) return <Spinner label="載入任務中…" />;
+  if (!tasksByView || !counts || !user) return <Spinner label="載入任務中…" />;
 
-  const { counts, visible } = useVisibleTasks(tasks, user.id, activeView);
+  const visible = sortVisibleTasks(tasksByView[activeView]);
   const grouped = COLS.map((c) => ({ ...c, items: visible.filter(c.match) }));
 
   const claim = async (task: Task) => {
     setClaimNotice(null);
     setClaimingId(task.id);
     try {
-      const updated = await taskApi.claim(task.id);
-      setTasks((prev) => (prev ? prev.map((t) => (t.id === task.id ? updated : t)) : prev));
+      await taskApi.claim(task.id);
       setClaimNotice({ kind: 'ok', message: `${task.partNumber} 已接單` });
       refreshMe().catch(() => {});
+      load();
     } catch (e) {
       setClaimNotice({
         kind: 'error',

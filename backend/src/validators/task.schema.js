@@ -106,6 +106,8 @@ export const listTasksSchema = {
     subsystemId: z.coerce.bigint().optional(),
     includeSubsystemCompleted: z.coerce.boolean().optional(),
     assigneeId: z.coerce.bigint().optional(),
+    scope: z.enum(['pool', 'assigned', 'created', 'all']).optional(),
+    board: z.coerce.boolean().optional(),
     mine: z.coerce.boolean().optional(), // 只看與我相關的任務
   }),
 };

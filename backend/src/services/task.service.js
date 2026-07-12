@@ -278,7 +278,19 @@ export const taskService = {
   },
 
   async list(query, actor) {
-    const { page, limit, status, systemId, robotId, subsystemId, assigneeId, mine, includeSubsystemCompleted } = query;
+    const {
+      page,
+      limit,
+      status,
+      systemId,
+      robotId,
+      subsystemId,
+      assigneeId,
+      mine,
+      scope,
+      board,
+      includeSubsystemCompleted,
+    } = query;
     const where = {};
     if (status) where.status = status;
     if (systemId) where.systemId = systemId;
@@ -289,8 +301,30 @@ export const taskService = {
       where.NOT = { status: TASK_STATUS.COMPLETED, subsystemId: { not: null } };
     }
 
+    if (board) {
+      const recentCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      where.AND = [{
+        OR: [
+          { status: { notIn: [TASK_STATUS.COMPLETED, TASK_STATUS.REJECTED, TASK_STATUS.CANCELLED] } },
+          {
+            status: { in: [TASK_STATUS.COMPLETED, TASK_STATUS.REJECTED, TASK_STATUS.CANCELLED] },
+            updatedAt: { gte: recentCutoff },
+          },
+        ],
+      }];
+    }
+
+    if (scope === 'pool') {
+      where.status = TASK_STATUS.PENDING;
+      where.assigneeId = null;
+    } else if (scope === 'assigned') {
+      where.OR = [{ assigneeId: actor.id }, { postProcessorId: actor.id }];
+    } else if (scope === 'created') {
+      where.creatorId = actor.id;
+    }
+
     // M1：小隊透明，所有 member 可見全部任務；mine 僅作為視角篩選。
-    if (mine) {
+    if (!scope && mine) {
       where.OR = [{ creatorId: actor.id }, { assigneeId: actor.id }];
     }
 
