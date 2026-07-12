@@ -45,6 +45,9 @@ const importBaseBody = z.object({
   materialId: z.coerce.number().int().positive().optional(),
   postProcessId: z.coerce.number().int().positive().optional(),
   items: z.array(importItem).max(1000).optional(),
+  // 單獨匯入（Selective Import）：只同步這些 rowKey，其餘零件完全不動。
+  // 未提供 = 全部匯入（Import All，維持既有行為）。
+  selection: z.array(z.string().min(1).max(512)).max(1000).optional(),
 });
 
 const importBody = importBaseBody.refine((v) => v.systemId || v.subsystemId, {

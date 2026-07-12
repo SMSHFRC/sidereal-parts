@@ -652,6 +652,7 @@ export const onshapeApi = {
     materialId?: number;
     postProcessId?: number;
     items?: OnshapeImportItem[]; // 逐件覆寫
+    selection?: string[]; // 單獨匯入：只同步這些 rowKey
   }) =>
     api<OnshapeImportResult>('/onshape/import', {
       method: 'POST',

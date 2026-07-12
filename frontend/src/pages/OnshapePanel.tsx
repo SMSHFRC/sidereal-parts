@@ -82,6 +82,8 @@ export default function OnshapePanel() {
   const [postProcessId, setPostProcessId] = useState('');
   const [preview, setPreview] = useState<OnshapeImportPreview | null>(null);
   const [edits, setEdits] = useState<Record<string, Edit>>({});
+  const [importMode, setImportMode] = useState<'all' | 'selective'>('all'); // 全部匯入 / 單獨匯入
+  const [selected, setSelected] = useState<Record<string, boolean>>({}); // 單獨匯入勾選（rowKey→是否）
   const [result, setResult] = useState<OnshapeImportResult | null>(null);
   const [thumb, setThumb] = useState<string | null>(null);
   const [busy, setBusy] = useState<'preview' | 'import' | null>(null);
@@ -162,6 +164,7 @@ export default function OnshapePanel() {
       };
     }
     setEdits(init);
+    setSelected({}); // 預覽重新載入時清空單獨匯入的勾選
   }, [preview, allRows]);
 
   const setEdit = (rowKey: string, patch: Partial<Edit>) =>
@@ -170,6 +173,14 @@ export default function OnshapePanel() {
   const liveMade = allRows.filter((r) => edits[r.rowKey]?.classification === 'made');
   const liveCots = allRows.filter((r) => edits[r.rowKey]?.classification === 'cots');
   const liveSkip = allRows.filter((r) => edits[r.rowKey]?.classification === 'skip');
+
+  // 單獨匯入時，實際要同步的零件 = 勾選的加工件；全部匯入時 = 所有加工件
+  const selectiveMode = importMode === 'selective';
+  const importTargets = selectiveMode ? liveMade.filter((r) => selected[r.rowKey]) : liveMade;
+  const toggleSelected = (rowKey: string) =>
+    setSelected((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }));
+  const setAllSelected = (value: boolean) =>
+    setSelected(value ? Object.fromEntries(liveMade.map((r) => [r.rowKey, true])) : {});
 
   const subsystemOptions = (robots ?? []).flatMap((robot) =>
     robot.subsystems.map((sub) => ({
@@ -200,11 +211,11 @@ export default function OnshapePanel() {
       setError('請先選擇機器人子系統');
       return;
     }
-    if (liveMade.length === 0) {
-      setError('沒有要加工的零件');
+    if (importTargets.length === 0) {
+      setError(selectiveMode ? '請至少勾選一個要同步的零件' : '沒有要加工的零件');
       return;
     }
-    const noMethod = liveMade.filter((r) => !(edits[r.rowKey].methodId || methodId));
+    const noMethod = importTargets.filter((r) => !(edits[r.rowKey].methodId || methodId));
     if (noMethod.length > 0) {
       setError(`有 ${noMethod.length} 個加工件未選加工方式（設預設或逐件選）`);
       return;
@@ -212,10 +223,8 @@ export default function OnshapePanel() {
     setError('');
     setBusy('import');
     try {
-      const items: OnshapeImportItem[] = allRows.map((row) => {
+      const madeItem = (row: OnshapeBomItem): OnshapeImportItem => {
         const e = edits[row.rowKey];
-        if (e.classification !== 'made')
-          return { rowKey: row.rowKey, classification: e.classification === 'skip' ? 'skip' : 'cots' };
         return {
           rowKey: row.rowKey,
           classification: 'made',
@@ -226,13 +235,24 @@ export default function OnshapePanel() {
           ...(isAdmin && e.assigneeId ? { assigneeId: e.assigneeId } : {}),
           ...(e.isUrgent ? { isUrgent: true } : {}),
         };
-      });
+      };
+      // 單獨匯入：只送勾選件 + selection，其餘零件後端完全不動。
+      // 全部匯入：送全部列（含 COTS/跳過分類），維持既有同步行為。
+      const items: OnshapeImportItem[] = selectiveMode
+        ? importTargets.map(madeItem)
+        : allRows.map((row) => {
+            const e = edits[row.rowKey];
+            if (e.classification !== 'made')
+              return { rowKey: row.rowKey, classification: e.classification === 'skip' ? 'skip' : 'cots' };
+            return madeItem(row);
+          });
       setResult(
         await onshapeApi.importBom({
           url,
           subsystemId,
           ...(methodId ? { manufacturingMethodId: Number(methodId) } : {}),
           items,
+          ...(selectiveMode ? { selection: importTargets.map((r) => r.rowKey) } : {}),
         }),
       );
       setAssemblyProg(null); // 匯入後進度快取失效，下次切到進度分頁重抓
@@ -562,6 +582,34 @@ export default function OnshapePanel() {
         </div>
       ) : view === 'import' ? (
         <div className="mt-3 space-y-2">
+          {/* 匯入模式：全部匯入 / 單獨匯入 */}
+          <div className="flex gap-1.5">
+            {(
+              [
+                { key: 'all', label: '全部匯入', hint: '同步整個 Assembly' },
+                { key: 'selective', label: '單獨匯入', hint: '只勾選要更新的零件' },
+              ] as { key: 'all' | 'selective'; label: string; hint: string }[]
+            ).map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setImportMode(m.key)}
+                className={`min-h-11 flex-1 rounded-md px-2 text-xs font-semibold ${
+                  importMode === m.key
+                    ? 'bg-slate-900 text-white'
+                    : 'border border-slate-200 bg-white text-slate-600'
+                }`}
+              >
+                {m.label}
+                <span className="mt-0.5 block text-[10px] font-normal opacity-70">{m.hint}</span>
+              </button>
+            ))}
+          </div>
+          {selectiveMode && (
+            <p className="rounded-md bg-sky-50 px-2.5 py-1.5 text-[11px] text-sky-800">
+              先「預覽」載入零件清單，勾選要更新／新增的零件後匯入。未勾選的零件完全不會被更動。
+            </p>
+          )}
           <label className="block text-xs font-medium text-slate-700">
             機器人子系統 *
             <select value={subsystemId} onChange={(e) => setSubsystemId(e.target.value)} className={inputCls}>
@@ -626,24 +674,53 @@ export default function OnshapePanel() {
             disabled={busy !== null || !preview || noSubsystems}
             className="min-h-10 flex-1 rounded-md bg-emerald-600 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {busy === 'import' ? '匯入中…' : `匯入 ${liveMade.length} 件`}
+            {busy === 'import' ? '匯入中…' : `匯入 ${importTargets.length} 件`}
           </button>
         </div>
       )}
 
       {view === 'import' && preview && (
         <section className="mt-3 space-y-2">
-          <p className="text-[11px] text-slate-500">
-            加工 {liveMade.length} · COTS {liveCots.length} · 跳過 {liveSkip.length} · 總列 {allRows.length}
-            ——逐件可切換分類與加工方式/材料
-          </p>
+          {selectiveMode ? (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-slate-500">
+                已勾選 {importTargets.length} / {liveMade.length} 個加工件
+              </p>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setAllSelected(true)}
+                  className="min-h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-600"
+                >
+                  全選
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAllSelected(false)}
+                  className="min-h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-600"
+                >
+                  全不選
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-500">
+              加工 {liveMade.length} · COTS {liveCots.length} · 跳過 {liveSkip.length} · 總列 {allRows.length}
+              ——逐件可切換分類與加工方式/材料
+            </p>
+          )}
 
-          {allRows.map((row) => {
+          {(selectiveMode ? liveMade : allRows).map((row) => {
             const e = edits[row.rowKey];
             if (!e) return null;
             const isMade = e.classification === 'made';
-            const border =
-              e.classification === 'made'
+            const isChecked = Boolean(selected[row.rowKey]);
+            const showDetails = isMade && (!selectiveMode || isChecked);
+            const border = selectiveMode
+              ? isChecked
+                ? 'border-l-slate-900'
+                : 'border-l-slate-200'
+              : e.classification === 'made'
                 ? 'border-l-slate-900'
                 : e.classification === 'cots'
                   ? 'border-l-amber-500'
@@ -651,19 +728,36 @@ export default function OnshapePanel() {
             return (
               <div key={row.rowKey} className={`rounded-lg border border-slate-200 border-l-4 ${border} bg-white p-2`}>
                 <div className="flex items-start justify-between gap-1.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-medium text-slate-900">{row.name ?? '未命名'}</p>
-                    <p className="text-[10px] text-slate-500">
-                      x{row.quantity || 0} · {row.material ?? '無材料'}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <div className="flex w-32 gap-1">
-                      <button onClick={() => setEdit(row.rowKey, { classification: 'made' })} className={clsBtn(isMade, 'bg-slate-900 text-white')}>加工</button>
-                      <button onClick={() => setEdit(row.rowKey, { classification: 'cots' })} className={clsBtn(e.classification === 'cots', 'bg-amber-500 text-white')}>COTS</button>
-                      <button onClick={() => setEdit(row.rowKey, { classification: 'skip' })} className={clsBtn(e.classification === 'skip', 'bg-slate-400 text-white')}>跳過</button>
+                  {selectiveMode ? (
+                    <label className="flex min-w-0 flex-1 items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleSelected(row.rowKey)}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-slate-900"
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-medium text-slate-900">{row.name ?? '未命名'}</span>
+                        <span className="block text-[10px] text-slate-500">x{row.quantity || 0} · {row.material ?? '無材料'}</span>
+                      </span>
+                    </label>
+                  ) : (
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-medium text-slate-900">{row.name ?? '未命名'}</p>
+                      <p className="text-[10px] text-slate-500">
+                        x{row.quantity || 0} · {row.material ?? '無材料'}
+                      </p>
                     </div>
-                    {isMade && (
+                  )}
+                  <div className="flex shrink-0 items-center gap-1">
+                    {!selectiveMode && (
+                      <div className="flex w-32 gap-1">
+                        <button onClick={() => setEdit(row.rowKey, { classification: 'made' })} className={clsBtn(isMade, 'bg-slate-900 text-white')}>加工</button>
+                        <button onClick={() => setEdit(row.rowKey, { classification: 'cots' })} className={clsBtn(e.classification === 'cots', 'bg-amber-500 text-white')}>COTS</button>
+                        <button onClick={() => setEdit(row.rowKey, { classification: 'skip' })} className={clsBtn(e.classification === 'skip', 'bg-slate-400 text-white')}>跳過</button>
+                      </div>
+                    )}
+                    {showDetails && (
                       <button
                         type="button"
                         onClick={() => setEdit(row.rowKey, { isUrgent: !e.isUrgent })}
@@ -678,7 +772,7 @@ export default function OnshapePanel() {
                   </div>
                 </div>
 
-                {isMade && (
+                {showDetails && (
                   <div className="mt-1.5 grid grid-cols-3 gap-1.5">
                     <select
                       value={e.methodId}
@@ -713,7 +807,7 @@ export default function OnshapePanel() {
                   </div>
                 )}
 
-                {isMade && isAdmin && (
+                {showDetails && isAdmin && (
                   <select
                     value={e.assigneeId}
                     onChange={(ev) => setEdit(row.rowKey, { assigneeId: ev.target.value })}

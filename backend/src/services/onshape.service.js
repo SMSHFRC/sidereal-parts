@@ -550,7 +550,7 @@ export const onshapeService = {
     return makeImportPreview(userId, url);
   },
 
-  async importBom(userId, { url, systemId, robotId, subsystemId, manufacturingMethodId, materialId, postProcessId, items }, actor) {
+  async importBom(userId, { url, systemId, robotId, subsystemId, manufacturingMethodId, materialId, postProcessId, items, selection }, actor) {
     // 逐件指派僅 admin（與接單制一致）；先於任何外部呼叫檢查
     const wantsAssign = (items ?? []).some((it) => it.assigneeId != null);
     if (wantsAssign && actor?.role !== 'admin') {
@@ -588,21 +588,27 @@ export const onshapeService = {
     const overrides = new Map((items ?? []).map((it) => [it.rowKey, it]));
     const allRows = [...preview.made, ...preview.cots, ...preview.unknown];
 
+    // 單獨匯入：只處理勾選的 rowKey，其餘零件完全不碰（不新增、不更新、不寫 COTS/跳過）
+    const selective = Array.isArray(selection);
+    const selectedKeys = selective ? new Set(selection) : null;
+
     // 先決定每列最終分類與設定並驗證
     const madePlan = [];
     const cotsPlan = [];
     const skippedPlan = []; // 明確跳過的零件也落地保存，供之後檢視
     const missingMethod = [];
     for (const row of allRows) {
+      if (selective && !selectedKeys.has(row.rowKey)) continue; // 未勾選 → 略過
       const ov = overrides.get(row.rowKey);
       if (ov?.classification === 'skip') {
-        skippedPlan.push(row);
+        if (!selective) skippedPlan.push(row); // 單獨匯入不落地跳過紀錄
         continue;
       }
-      const cls = ov?.classification ?? row.classification;
+      // 單獨匯入預設當作加工件（清單顯示的即是可加工零件）
+      const cls = ov?.classification ?? (selective ? 'made' : row.classification);
       if (cls === 'unknown') continue; // 未分類且未指定 → 不處理（需人工判斷）
       if (cls === 'cots') {
-        cotsPlan.push(row);
+        if (!selective) cotsPlan.push(row);
         continue;
       }
       // made：加工方式逐件可帶，未帶則用全域預設
