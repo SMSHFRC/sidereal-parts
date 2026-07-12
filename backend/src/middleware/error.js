@@ -24,7 +24,10 @@ export const errorHandler = (err, _req, res, _next) => {
     if (err.code === 'P2002') {
       statusCode = 409;
       code = 'DUPLICATE';
-      message = '資料已存在（唯一鍵衝突）';
+      // 附上撞到的欄位（僅欄位名，無資料值），並記 log 便於排查
+      const target = Array.isArray(err.meta?.target) ? err.meta.target.join(', ') : err.meta?.target;
+      message = `資料已存在（唯一鍵衝突${target ? `：${target}` : ''}）`;
+      console.error('[P2002]', err.meta, err.message?.split('\n').slice(-3).join(' '));
     } else if (err.code === 'P2025') {
       statusCode = 404;
       code = 'NOT_FOUND';

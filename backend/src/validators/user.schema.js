@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const idParam = z.object({
-  id: z.coerce.bigint({ invalid_type_error: 'id 必須為數字' }),
+  id: z.coerce.bigint({ invalid_type_error: 'id 必須是數字' }),
 });
 
 export const getUserSchema = { params: idParam };
@@ -11,11 +11,11 @@ export const updateUserSchema = {
   params: idParam,
   body: z
     .object({
-      password: z.string().min(8).max(128).optional(),
+      password: z.string().min(1).max(128).optional(),
       role: z.enum(['admin', 'member']).optional(),
       isActive: z.boolean().optional(),
     })
-    .refine((v) => Object.keys(v).length > 0, { message: '沒有可更新的欄位' }),
+    .refine((v) => Object.keys(v).length > 0, { message: '請至少提供一個更新欄位' }),
 };
 
 export const listUsersSchema = {

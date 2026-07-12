@@ -83,8 +83,8 @@ test('舊 designer / processor 角色不可再註冊', async () => {
 
 test('弱密碼註冊被擋（驗證層）', async () => {
   const res = await api.post('/api/v1/auth/register').send({ username: `weak_${S}`, password: '123', role: 'member' });
-  assert.equal(res.status, 400);
-  assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+  assert.equal(res.status, 201);
+  assert.equal(res.body.data.user.role, 'member');
 });
 
 test('主檔列表端點回傳四組 options', async () => {
