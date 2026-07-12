@@ -371,6 +371,15 @@ export interface Paged<T> {
   total: number;
 }
 
+export interface UpdateTaskInput {
+  manufacturingMethodId?: number;
+  materialId?: number | null;
+  postProcessId?: number | null;
+  quantity?: number;
+  dimensions?: string | null;
+  note?: string | null;
+}
+
 export interface CreateTaskInput {
   systemId: number;
   robotId?: string;
@@ -564,6 +573,8 @@ export const taskApi = {
   // Backward compatible with the currently deployed backend, which accepts
   // unassigned pending tasks through the status endpoint but may not have
   // POST /tasks/:id/claim deployed yet.
+  update: (id: string, input: UpdateTaskInput) =>
+    api<Task>(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   claim: (id: string) =>
     api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'accepted' }) }),
   updateStatus: (id: string, status: TaskStatus) =>

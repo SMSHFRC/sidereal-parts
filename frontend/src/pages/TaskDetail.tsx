@@ -7,9 +7,12 @@ import {
   fmtTime,
   getTaskDownloadFilename,
   getTaskDownloadSpec,
+  metaApi,
   STATUS_LABEL,
   taskApi,
+  toSelectOptions,
   transitionLabel,
+  type MetaOptions,
   type PrintMergeCandidate,
   type Task,
   type TaskStatus,
@@ -68,6 +71,17 @@ export default function TaskDetail() {
   const [priorityBusy, setPriorityBusy] = useState(false);
   const [revisions, setRevisions] = useState<Task[]>([]);
   const [revisionBusy, setRevisionBusy] = useState(false);
+  const [options, setOptions] = useState<MetaOptions | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editForm, setEditForm] = useState({
+    methodId: '',
+    materialId: '',
+    postProcessId: '',
+    quantity: '1',
+    dimensions: '',
+    note: '',
+  });
 
   const load = useCallback(() => {
     if (!id) return;
@@ -99,6 +113,10 @@ export default function TaskDetail() {
       .catch(() => setRevisions([]));
   }, [task?.id]);
 
+  useEffect(() => {
+    metaApi.options().then(setOptions).catch(() => {});
+  }, []);
+
   if (error) return <ErrorBox message={error} onRetry={load} />;
   if (!task || !user) return <Spinner label="載入任務中…" />;
 
@@ -118,6 +136,13 @@ export default function TaskDetail() {
   const downloadSpec = getTaskDownloadSpec(task);
   const canManagePriority = user.role === 'admin' || task.creator.id === user.id;
   const priorityEditable = task.status === 'pending' || task.status === 'accepted';
+  // 編輯工單（改加工方式/材料/後處理/數量）：建立者或管理員，結案前皆可
+  const canEditTask =
+    (user.role === 'admin' || task.creator.id === user.id) &&
+    !['completed', 'cancelled', 'rejected'].includes(task.status);
+  const methodOptions = options ? toSelectOptions(options.methods) : [];
+  const materialOptions = options ? toSelectOptions(options.materials) : [];
+  const postProcessOptions = options ? toSelectOptions(options.postProcesses) : [];
 
   const togglePriority = async () => {
     const nextUrgent = !task.isUrgent;
@@ -155,6 +180,40 @@ export default function TaskDetail() {
       setActionError(e instanceof ApiError ? e.message : '建立新版本失敗');
     } finally {
       setRevisionBusy(false);
+    }
+  };
+
+  const openEdit = () => {
+    setActionError('');
+    setEditForm({
+      methodId: String(task.manufacturingMethodId),
+      materialId: task.materialId ? String(task.materialId) : '',
+      postProcessId: task.postProcessId ? String(task.postProcessId) : '',
+      quantity: String(task.quantity),
+      dimensions: task.dimensions ?? '',
+      note: task.note ?? '',
+    });
+    setEditing(true);
+  };
+
+  const submitEdit = async () => {
+    setActionError('');
+    setEditBusy(true);
+    try {
+      const updated = await taskApi.update(task.id, {
+        manufacturingMethodId: Number(editForm.methodId),
+        materialId: editForm.materialId ? Number(editForm.materialId) : null,
+        postProcessId: editForm.postProcessId ? Number(editForm.postProcessId) : null,
+        quantity: Number(editForm.quantity) || 1,
+        dimensions: editForm.dimensions.trim() || null,
+        note: editForm.note.trim() || null,
+      });
+      setTask(updated);
+      setEditing(false);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '編輯工單失敗');
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -344,6 +403,109 @@ export default function TaskDetail() {
           )}
           <Field label="建立時間">{fmtTime(task.createdAt)}</Field>
         </dl>
+
+        {canEditTask && !editing && (
+          <button
+            type="button"
+            onClick={openEdit}
+            className="mt-3 min-h-9 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 active:bg-slate-100"
+          >
+            編輯工單（加工方式／材料／後處理／數量）
+          </button>
+        )}
+
+        {canEditTask && editing && (
+          <div className="mt-3 rounded-lg border border-slate-300 bg-slate-50 p-3">
+            <p className="text-sm font-semibold text-slate-800">編輯工單</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="col-span-2 block text-xs font-medium text-slate-600">
+                加工方式
+                <select
+                  value={editForm.methodId}
+                  onChange={(e) => setEditForm((p) => ({ ...p, methodId: e.target.value }))}
+                  className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm outline-none focus:border-slate-900"
+                >
+                  {methodOptions.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-slate-600">
+                材料
+                <select
+                  value={editForm.materialId}
+                  onChange={(e) => setEditForm((p) => ({ ...p, materialId: e.target.value }))}
+                  className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm outline-none focus:border-slate-900"
+                >
+                  <option value="">（不指定）</option>
+                  {materialOptions.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-slate-600">
+                後處理
+                <select
+                  value={editForm.postProcessId}
+                  onChange={(e) => setEditForm((p) => ({ ...p, postProcessId: e.target.value }))}
+                  className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm outline-none focus:border-slate-900"
+                >
+                  <option value="">無</option>
+                  {postProcessOptions.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-slate-600">
+                數量
+                <input
+                  type="number"
+                  min={1}
+                  value={editForm.quantity}
+                  onChange={(e) => setEditForm((p) => ({ ...p, quantity: e.target.value }))}
+                  className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm outline-none focus:border-slate-900"
+                />
+              </label>
+              <label className="block text-xs font-medium text-slate-600">
+                尺寸
+                <input
+                  value={editForm.dimensions}
+                  onChange={(e) => setEditForm((p) => ({ ...p, dimensions: e.target.value }))}
+                  className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm outline-none focus:border-slate-900"
+                />
+              </label>
+              <label className="col-span-2 block text-xs font-medium text-slate-600">
+                說明
+                <textarea
+                  value={editForm.note}
+                  onChange={(e) => setEditForm((p) => ({ ...p, note: e.target.value }))}
+                  rows={2}
+                  maxLength={2000}
+                  className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-slate-900"
+                />
+              </label>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-400">改加工方式會重算積分；已開始加工的工單請留意設備占用。</p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={submitEdit}
+                disabled={editBusy || !editForm.methodId}
+                className="min-h-10 flex-1 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white active:bg-slate-700 disabled:opacity-50"
+              >
+                {editBusy ? '儲存中…' : '儲存'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                disabled={editBusy}
+                className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-600 disabled:opacity-50"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className={`mt-4 rounded-lg border p-3 ${task.isUrgent ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'}`}>
           <div className="flex items-start justify-between gap-3">
