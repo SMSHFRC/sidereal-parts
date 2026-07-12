@@ -31,6 +31,22 @@ test('converts a STEP plate with a hole into a millimeter DXF', async () => {
   perforatedPlate.delete();
 });
 
+test('converts a rotated STEP plate by projecting its planar face', async () => {
+  await initializeStepConverter();
+  const plate = makeBaseBox(80, 40, 4).rotate(35, [0, 0, 0], [0, 1, 0]);
+  const stepBlob = exportSTEP([{ shape: plate, name: 'rotated-plate' }]);
+  const stepBuffer = Buffer.from(await stepBlob.arrayBuffer());
+
+  const dxf = await stepToDxf(stepBuffer);
+  const text = dxf.toString('utf8');
+
+  assert.match(text, /\nSECTION\n/);
+  assert.match(text, /\nLWPOLYLINE\n/);
+  assert.match(text, /\nEOF\n/);
+
+  plate.delete();
+});
+
 test('rejects non-STEP responses before conversion', () => {
   assert.throws(
     () => assertValidStep(Buffer.from('<html>gateway error</html>')),
