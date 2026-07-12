@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, taskApi, type Task } from '../api';
 import { useAuth } from '../auth';
-import { Empty, ErrorBox, Spinner, StatusBadge } from '../ui';
+import { Empty, ErrorBox, Spinner, StatusBadge, UrgentBadge } from '../ui';
 
 type ColKey = 'todo' | 'doing' | 'done';
 type ViewKey = 'pool' | 'assigned' | 'created' | 'all';
@@ -52,7 +52,10 @@ function Card({
       <Link to={`/tasks/${t.id}`} className="block active:bg-slate-50">
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-sm font-bold text-slate-900">{t.partNumber}</span>
-          <StatusBadge status={t.status} reviewRejected={t.reviewRejected} />
+          <span className="flex shrink-0 items-center gap-1">
+            {t.isUrgent && <UrgentBadge />}
+            <StatusBadge status={t.status} reviewRejected={t.reviewRejected} />
+          </span>
         </div>
         {t.note && <p className="mt-1 truncate text-sm text-slate-600">{t.note}</p>}
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
@@ -132,7 +135,7 @@ function sortVisibleTasks(tasks: Task[]) {
         if (task.status === 'post_processing') return 3;
         return 4;
       };
-      return priority(a.task) - priority(b.task) || a.index - b.index;
+      return Number(b.task.isUrgent) - Number(a.task.isUrgent) || priority(a.task) - priority(b.task) || a.index - b.index;
     })
     .map(({ task }) => task);
 }

@@ -404,11 +404,19 @@ export default function OnshapePanel() {
                 </div>
               </div>
               <div className="max-h-72 space-y-1.5 overflow-auto">
-                {assemblyProg.tasks.map((t) => (
+                {[...assemblyProg.tasks]
+                  .sort((a, b) => Number(b.isUrgent) - Number(a.isUrgent))
+                  .map((t) => (
                   <div key={t.id} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono text-[11px] font-bold text-slate-900">{t.partNumber}</span>
-                      <span
+                      <span className="flex items-center gap-1">
+                        {t.isUrgent && (
+                          <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            急件
+                          </span>
+                        )}
+                        <span
                         className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                           t.status === 'completed'
                             ? 'bg-emerald-100 text-emerald-800'
@@ -418,6 +426,7 @@ export default function OnshapePanel() {
                         }`}
                       >
                         {STATUS_LABEL[t.status]}
+                        </span>
                       </span>
                     </div>
                     <p className="mt-0.5 truncate text-[10px] text-slate-500">
@@ -425,7 +434,7 @@ export default function OnshapePanel() {
                       {t.assignee ? ` · ${t.assignee.username}` : ' · 未接單'}
                     </p>
                   </div>
-                ))}
+                  ))}
               </div>
             </>
           )}

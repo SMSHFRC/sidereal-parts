@@ -14,7 +14,7 @@ import {
   type TaskStatus,
 } from '../api';
 import { useAuth } from '../auth';
-import { ErrorBox, Field, Spinner, StatusBadge } from '../ui';
+import { ErrorBox, Field, Spinner, StatusBadge, UrgentBadge } from '../ui';
 import { OnshapeCard } from '../components/Onshape';
 
 const BTN_STYLE: Partial<Record<TaskStatus, string>> = {
@@ -63,6 +63,8 @@ export default function TaskDetail() {
   const [mergePrint, setMergePrint] = useState(false);
   const [mergeCandidates, setMergeCandidates] = useState<PrintMergeCandidate[]>([]);
   const [selectedMergeIds, setSelectedMergeIds] = useState<string[]>([]);
+  const [urgentReason, setUrgentReason] = useState('');
+  const [priorityBusy, setPriorityBusy] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -82,6 +84,10 @@ export default function TaskDetail() {
     setSelectedMergeIds([]);
   }, [task?.id]);
 
+  useEffect(() => {
+    setUrgentReason(task?.urgentReason ?? '');
+  }, [task?.id, task?.urgentReason]);
+
   if (error) return <ErrorBox message={error} onRetry={load} />;
   if (!task || !user) return <Spinner label="載入任務中…" />;
 
@@ -99,6 +105,27 @@ export default function TaskDetail() {
   const isOpenPool = task.status === 'pending' && !task.assignee;
   const showClaimPost = canClaimPostProcess(task, user);
   const downloadSpec = getTaskDownloadSpec(task);
+  const canManagePriority = user.role === 'admin' || task.creator.id === user.id;
+
+  const togglePriority = async () => {
+    const nextUrgent = !task.isUrgent;
+    if (!nextUrgent && !window.confirm('確定取消這筆任務的急件標記？')) return;
+    setActionError('');
+    setPriorityBusy(true);
+    try {
+      const updated = await taskApi.updatePriority(
+        task.id,
+        nextUrgent,
+        nextUrgent ? urgentReason.trim() || null : undefined,
+      );
+      setTask(updated);
+      setUrgentReason(updated.urgentReason ?? '');
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : '急件狀態更新失敗');
+    } finally {
+      setPriorityBusy(false);
+    }
+  };
 
   const doAction = async (status: TaskStatus) => {
     if (!window.confirm(confirmFor(task, status, isOpenPool))) return;
@@ -247,7 +274,10 @@ export default function TaskDetail() {
       <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           <h1 className="font-mono text-lg font-bold text-slate-900">{task.partNumber}</h1>
-          <StatusBadge status={task.status} reviewRejected={task.reviewRejected} />
+          <span className="flex shrink-0 items-center gap-1">
+            {task.isUrgent && <UrgentBadge />}
+            <StatusBadge status={task.status} reviewRejected={task.reviewRejected} />
+          </span>
         </div>
 
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
@@ -265,6 +295,53 @@ export default function TaskDetail() {
           )}
           <Field label="建立時間">{fmtTime(task.createdAt)}</Field>
         </dl>
+
+        <div className={`mt-4 rounded-lg border p-3 ${task.isUrgent ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className={`text-sm font-semibold ${task.isUrgent ? 'text-red-800' : 'text-slate-800'}`}>
+                {task.isUrgent ? '此任務已標記為急件' : '急件優先'}
+              </p>
+              {task.isUrgent && (
+                <p className="mt-1 text-xs text-red-700">
+                  {task.urgentReason || '未填寫急件原因'}
+                  {task.urgentBy && ` · ${task.urgentBy.username}`}
+                  {task.urgentAt && ` · ${fmtTime(task.urgentAt)}`}
+                </p>
+              )}
+            </div>
+            {task.isUrgent && <UrgentBadge />}
+          </div>
+
+          {canManagePriority && !task.isUrgent && (
+            <label className="mt-3 block text-xs font-medium text-slate-600">
+              急件原因（選填）
+              <textarea
+                value={urgentReason}
+                onChange={(event) => setUrgentReason(event.target.value)}
+                maxLength={500}
+                rows={2}
+                className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-red-500"
+                placeholder="例如：比賽前需完成、阻擋組裝進度"
+              />
+            </label>
+          )}
+
+          {canManagePriority && (
+            <button
+              type="button"
+              onClick={togglePriority}
+              disabled={priorityBusy}
+              className={`mt-3 min-h-10 w-full rounded-lg px-4 text-sm font-semibold disabled:opacity-50 ${
+                task.isUrgent
+                  ? 'border border-red-300 bg-white text-red-700 active:bg-red-100'
+                  : 'bg-red-600 text-white active:bg-red-700'
+              }`}
+            >
+              {priorityBusy ? '更新中…' : task.isUrgent ? '取消急件' : '標記為急件'}
+            </button>
+          )}
+        </div>
 
         {task.note && (
           <div className="mt-4 rounded-lg bg-slate-50 p-3">

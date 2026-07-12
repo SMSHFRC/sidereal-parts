@@ -60,6 +60,14 @@ export function StatusBadge({
   );
 }
 
+export function UrgentBadge() {
+  return (
+    <span className="inline-block rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+      急件
+    </span>
+  );
+}
+
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>

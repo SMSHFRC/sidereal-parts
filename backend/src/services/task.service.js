@@ -55,6 +55,7 @@ const taskInclude = {
   creator: { select: { id: true, username: true } },
   assignee: { select: { id: true, username: true } },
   postProcessor: { select: { id: true, username: true } },
+  urgentBy: { select: { id: true, username: true } },
   statusHistory: {
     orderBy: { changedAt: 'desc' },
     take: 20,
@@ -332,7 +333,7 @@ export const taskService = {
       prisma.task.findMany({
         where,
         include: taskInclude,
-        orderBy: { id: 'desc' },
+        orderBy: [{ isUrgent: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -345,6 +346,27 @@ export const taskService = {
     const task = await prisma.task.findUnique({ where: { id }, include: taskInclude });
     if (!task) throw ApiError.notFound('任務不存在');
     return withTaskFlags(task);
+  },
+
+  async updatePriority(id, { isUrgent, reason }, actor) {
+    const task = await prisma.task.findUnique({ where: { id }, select: { id: true, creatorId: true } });
+    if (!task) throw ApiError.notFound('任務不存在');
+    if (actor.role !== ROLES.ADMIN && task.creatorId !== actor.id) {
+      throw ApiError.forbidden('僅建立者或管理員可調整急件狀態');
+    }
+
+    return withTaskFlags(await prisma.task.update({
+      where: { id },
+      data: isUrgent
+        ? {
+            isUrgent: true,
+            urgentById: actor.id,
+            urgentAt: new Date(),
+            urgentReason: reason?.trim() || null,
+          }
+        : { isUrgent: false },
+      include: taskInclude,
+    }));
   },
 
   async simulateTimeout(id, actor) {

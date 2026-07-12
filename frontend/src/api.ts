@@ -74,6 +74,10 @@ export interface Task {
   creatorId: string;
   assigneeId: string | null;
   postProcessorId: string | null;
+  isUrgent: boolean;
+  urgentById: string | null;
+  urgentAt: string | null;
+  urgentReason: string | null;
   quantity: number;
   rewardPoints: number;
   machiningExtensionMinutes: number;
@@ -99,6 +103,7 @@ export interface Task {
   creator: UserRef;
   assignee: UserRef | null;
   postProcessor: UserRef | null;
+  urgentBy: UserRef | null;
   // M3：Onshape 參照（drawingUrl 為 Onshape 連結時後端自動解析）
   onshapeDid: string | null;
   onshapeWvm: string | null;
@@ -282,6 +287,7 @@ export interface AssemblyProgress {
     partNumber: string;
     note: string | null;
     status: TaskStatus;
+    isUrgent: boolean;
     quantity: number;
     assignee: { username: string } | null;
   }>;
@@ -555,6 +561,11 @@ export const taskApi = {
     api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'accepted' }) }),
   updateStatus: (id: string, status: TaskStatus) =>
     api<Task>(`/tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  updatePriority: (id: string, isUrgent: boolean, reason?: string | null) =>
+    api<Task>(`/tasks/${id}/priority`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isUrgent, reason }),
+    }),
   extendMachiningTime: (id: string) =>
     api<Task>(`/tasks/${id}/extend-time`, { method: 'POST' }),
   statusReminders: () => api<Task[]>('/tasks/reminders/status'),

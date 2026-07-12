@@ -82,6 +82,14 @@ export const reminderResponseSchema = {
   }),
 };
 
+export const updatePrioritySchema = {
+  params: idParam,
+  body: z.object({
+    isUrgent: z.boolean(),
+    reason: z.string().trim().max(500).nullable().optional(),
+  }),
+};
+
 export const getTaskSchema = { params: idParam };
 export const deleteTaskSchema = { params: idParam };
 

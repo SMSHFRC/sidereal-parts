@@ -49,6 +49,7 @@ model User {
   createdTasks      Task[]             @relation("Creator")
   assignedTasks     Task[]             @relation("Assignee")
   postProcessTasks  Task[]             @relation("PostProcessor")
+  urgentMarkedTasks Task[]             @relation("UrgentMarkedBy")
   ownedPrintBatches PrintBatch[]        @relation("PrintBatchOwner")
   taskTransfersFrom TaskAssignmentTransfer[] @relation("TransferFromAssignee")
   taskTransfersTo   TaskAssignmentTransfer[] @relation("TransferToAssignee")
@@ -259,6 +260,10 @@ model Task {
   creatorId             BigInt     @map("creator_id")
   assigneeId            BigInt?    @map("assignee_id")
   postProcessorId       BigInt?    @map("post_processor_id") // 後處理者（與加工者可為不同人）
+  isUrgent              Boolean    @default(false) @map("is_urgent")
+  urgentById            BigInt?    @map("urgent_by_id")
+  urgentAt              DateTime?  @map("urgent_at")
+  urgentReason          String?    @map("urgent_reason")
 
   quantity              Int
   rewardPoints          Int        @default(0) @map("reward_points")
@@ -294,6 +299,7 @@ model Task {
   creator             User                @relation("Creator", fields: [creatorId], references: [id])
   assignee            User?               @relation("Assignee", fields: [assigneeId], references: [id])
   postProcessor       User?               @relation("PostProcessor", fields: [postProcessorId], references: [id])
+  urgentBy            User?               @relation("UrgentMarkedBy", fields: [urgentById], references: [id], onDelete: SetNull)
   statusHistory       TaskStatusHistory[]
   pointsLedger        UserPointsLedger[]
   importBatch         OnshapeImportBatch? @relation(fields: [importBatchId], references: [id])
@@ -303,6 +309,8 @@ model Task {
   @@unique([partNumberPrefix, partNumberSeq])
   @@index([assigneeId])
   @@index([postProcessorId])
+  @@index([isUrgent])
+  @@index([urgentById])
   @@index([creatorId])
   @@index([status])
   @@index([systemId])

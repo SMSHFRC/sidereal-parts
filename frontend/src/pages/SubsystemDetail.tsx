@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, robotApi, type RobotSubsystem, type Task } from '../api';
-import { Empty, ErrorBox, Spinner, StatusBadge } from '../ui';
+import { Empty, ErrorBox, Spinner, StatusBadge, UrgentBadge } from '../ui';
 import { ProgressBar } from './Robots';
 
 const GROUPS = [
@@ -44,7 +44,7 @@ export default function SubsystemDetail() {
 
   const sorted = tasks
     .map((task, index) => ({ task, index }))
-    .sort((a, b) => priority(a.task) - priority(b.task) || a.index - b.index)
+    .sort((a, b) => Number(b.task.isUrgent) - Number(a.task.isUrgent) || priority(a.task) - priority(b.task) || a.index - b.index)
     .map(({ task }) => task);
   const grouped = GROUPS.map((group) => ({ ...group, items: sorted.filter(group.match) }));
 
@@ -99,7 +99,10 @@ export default function SubsystemDetail() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono text-sm font-bold text-slate-900">{task.partNumber}</span>
-                      <StatusBadge status={task.status} reviewRejected={task.reviewRejected} />
+                      <span className="flex shrink-0 items-center gap-1">
+                        {task.isUrgent && <UrgentBadge />}
+                        <StatusBadge status={task.status} reviewRejected={task.reviewRejected} />
+                      </span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                       <span>x{task.quantity}</span>

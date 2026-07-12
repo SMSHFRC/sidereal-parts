@@ -10,7 +10,7 @@ import {
   type Task,
   type TaskStatus,
 } from '../api';
-import { ErrorBox, Spinner, StatusBadge } from '../ui';
+import { ErrorBox, Spinner, StatusBadge, UrgentBadge } from '../ui';
 import { machiningMinutes } from '../components/ProcessingTimeAlert';
 
 type FilterKey = 'all' | 'pending' | 'active' | 'review';
@@ -85,6 +85,7 @@ function QueueItem({
             >
               {sourceName(task)}
             </Link>
+            {task.isUrgent && <UrgentBadge />}
             <StatusBadge status={task.status} reviewRejected={task.reviewRejected} />
           </div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -209,6 +210,7 @@ export default function MachiningSchedule() {
         ...group,
         tasks: group.tasks.sort(
           (a, b) =>
+            Number(b.isUrgent) - Number(a.isUrgent) ||
             taskPriority(a) - taskPriority(b) ||
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
         ),

@@ -200,6 +200,40 @@ test('並發建立 10 筆任務：編號皆唯一', async () => {
   assert.equal(new Set(numbers).size, 10, '10 筆並發不可有重複編號');
 });
 
+test('急件可由建立者標記與取消，且在清單中優先排序', async () => {
+  const forbidden = await api
+    .patch(`/api/v1/tasks/${ctx.taskId}/priority`)
+    .set(auth(ctx.memberBToken))
+    .send({ isUrgent: true, reason: '不應成功' });
+  assert.equal(forbidden.status, 403);
+
+  const marked = await api
+    .patch(`/api/v1/tasks/${ctx.taskId}/priority`)
+    .set(auth(ctx.memberAToken))
+    .send({ isUrgent: true, reason: '阻擋組裝進度' });
+  assert.equal(marked.status, 200);
+  assert.equal(marked.body.data.isUrgent, true);
+  assert.equal(marked.body.data.urgentReason, '阻擋組裝進度');
+  assert.equal(marked.body.data.urgentBy.id, ctx.memberAId);
+  assert.ok(marked.body.data.urgentAt);
+
+  const created = await api
+    .get('/api/v1/tasks?scope=created&limit=100')
+    .set(auth(ctx.memberAToken));
+  assert.equal(created.status, 200);
+  assert.equal(created.body.data.items[0].id, ctx.taskId);
+
+  const cleared = await api
+    .patch(`/api/v1/tasks/${ctx.taskId}/priority`)
+    .set(auth(ctx.memberAToken))
+    .send({ isUrgent: false });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.body.data.isUrgent, false);
+  assert.equal(cleared.body.data.urgentReason, '阻擋組裝進度');
+  assert.equal(cleared.body.data.urgentBy.id, ctx.memberAId);
+  assert.ok(cleared.body.data.urgentAt);
+});
+
 test('未帶 token 取任務清單 401', async () => {
   const res = await api.get('/api/v1/tasks');
   assert.equal(res.status, 401);

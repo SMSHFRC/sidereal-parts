@@ -15,6 +15,7 @@ import {
   startPrintBatchSchema,
   printBatchParamSchema,
   reminderResponseSchema,
+  updatePrioritySchema,
 } from '../validators/task.schema.js';
 
 const router = Router();
@@ -30,6 +31,7 @@ router.get('/:id/download', validate(getTaskSchema), onshapeController.downloadT
 router.post('/:id/simulate-timeout', requireRole(ROLES.ADMIN), validate(getTaskSchema), taskController.simulateTimeout);
 router.post('/:id/extend-time', requireRole(ROLES.ADMIN), validate(getTaskSchema), taskController.extendMachiningTime);
 router.post('/:id/reminder-response', validate(reminderResponseSchema), taskController.respondStatusReminder);
+router.patch('/:id/priority', validate(updatePrioritySchema), taskController.updatePriority);
 router.get('/:id/print-merge-candidates', validate(getTaskSchema), taskController.printMergeCandidates);
 router.post('/:id/print-batch/start', validate(startPrintBatchSchema), taskController.startPrintBatch);
 router.get('/:id', validate(getTaskSchema), taskController.getById);

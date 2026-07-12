@@ -805,13 +805,14 @@ export const onshapeService = {
       prisma.task.groupBy({ by: ['status'], where, _count: { _all: true } }),
       prisma.task.findMany({
         where,
-        orderBy: { id: 'desc' },
+        orderBy: [{ isUrgent: 'desc' }, { id: 'desc' }],
         take: 100,
         select: {
           id: true,
           partNumber: true,
           note: true,
           status: true,
+          isUrgent: true,
           quantity: true,
           assignee: { select: { username: true } },
         },
