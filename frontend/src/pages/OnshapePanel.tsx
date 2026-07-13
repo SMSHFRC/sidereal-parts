@@ -44,24 +44,50 @@ type Edit = {
 };
 type View = 'import' | 'progress' | 'add';
 
-function readPanelRef() {
+type PanelRef = {
+  did: string;
+  wvm: 'w' | 'v' | 'm';
+  wvmId: string;
+  eid: string;
+};
+
+const ONSHAPE_ID_RE = /^[0-9a-f]{24}$/i;
+const PANEL_ACTION_URL =
+  'https://sidereal-parts.pages.dev/onshape-panel?did={$documentId}&wvm={$workspaceOrVersion}&wvmid={$workspaceOrVersionId}&eid={$elementId}';
+
+function readPanelRef(): PanelRef | null {
   const q = new URLSearchParams(window.location.search);
-  const did = q.get('did') ?? q.get('documentId');
-  const eid = q.get('eid') ?? q.get('elementId');
-  const wvm =
+  const did = (q.get('did') ?? q.get('documentId'))?.trim() ?? '';
+  const eid = (q.get('eid') ?? q.get('elementId'))?.trim() ?? '';
+  const rawWvm =
     q.get('wvm') ??
+    q.get('workspaceOrVersion') ??
     (q.get('workspaceId') ? 'w' : q.get('versionId') ? 'v' : q.get('microversionId') ? 'm' : null);
-  const wvmId =
+  const rawWvmId =
     q.get('wvmId') ??
     q.get('wvmid') ??
+    q.get('workspaceOrVersionId') ??
     q.get('workspaceId') ??
     q.get('versionId') ??
     q.get('microversionId');
-  if (!did || !wvm || !wvmId || !eid) return null;
+  const normalizedWvm = rawWvm?.trim().toLowerCase();
+  const wvm = normalizedWvm === 'w' || normalizedWvm === 'v' || normalizedWvm === 'm' ? normalizedWvm : null;
+  const wvmId = rawWvmId?.trim() ?? '';
+  if (!ONSHAPE_ID_RE.test(did) || !wvm || !ONSHAPE_ID_RE.test(wvmId) || !ONSHAPE_ID_RE.test(eid)) {
+    return null;
+  }
   return { did, wvm, wvmId, eid };
 }
 
-function makeOnshapeUrl(ref: NonNullable<ReturnType<typeof readPanelRef>>) {
+function panelRefError() {
+  const values = [...new URLSearchParams(window.location.search).values()];
+  if (values.some((value) => value.includes('$') || value.includes('[') || value.includes('{'))) {
+    return `Onshape Action URL 變數沒有正確展開，請改成：${PANEL_ACTION_URL}`;
+  }
+  return `缺少或無效的 Onshape 文件參數。Action URL 請設定為：${PANEL_ACTION_URL}`;
+}
+
+function makeOnshapeUrl(ref: PanelRef) {
   return `https://cad.onshape.com/documents/${ref.did}/${ref.wvm}/${ref.wvmId}/e/${ref.eid}`;
 }
 
@@ -71,7 +97,7 @@ function RowThumb({
   osRef,
 }: {
   row: OnshapeBomItem;
-  osRef: NonNullable<ReturnType<typeof readPanelRef>>;
+  osRef: PanelRef;
 }) {
   const [open, setOpen] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
@@ -403,8 +429,8 @@ export default function OnshapePanel() {
   if (!ref) {
     return (
       <main className="min-h-dvh bg-slate-50 p-3">
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          缺少 Onshape 文件參數
+        <div className="break-words rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {panelRefError()}
         </div>
       </main>
     );
