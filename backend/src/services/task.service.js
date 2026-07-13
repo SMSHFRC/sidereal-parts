@@ -23,21 +23,11 @@ function workspaceRefOf(task) {
   if (task.onshapeWvm === 'w' && task.onshapeWvmId) {
     return { did: task.onshapeDid, wvm: 'w', wvmId: task.onshapeWvmId };
   }
-  if (task.onshapeWvm === 'v' && task.onshapeWvmId) {
-    return { did: task.onshapeDid, wvm: 'v', wvmId: task.onshapeWvmId };
-  }
   const r = task.drawingUrl ? parseOnshapeUrl(task.drawingUrl) : null;
-  if (r && ['w', 'v'].includes(r.wvm) && r.did === task.onshapeDid) {
-    return { did: r.did, wvm: r.wvm, wvmId: r.wvmId };
+  if (r && r.wvm === 'w' && r.did === task.onshapeDid) {
+    return { did: r.did, wvm: 'w', wvmId: r.wvmId };
   }
   return null;
-}
-
-function onshapePartStudioUrlOf(task) {
-  if (!task.onshapeDid || !task.onshapeEid) return null;
-  const ref = workspaceRefOf(task);
-  if (!ref) return null;
-  return `https://cad.onshape.com/documents/${ref.did}/${ref.wvm}/${ref.wvmId}/e/${task.onshapeEid}`;
 }
 
 // 積分規則：加工分 = 加工方式的 basePoints/件（CNC/車床 5、3D列印/雷切 1）；後處理分 2/件
@@ -110,7 +100,6 @@ function withTaskFlags(task) {
   const { statusHistory, printBatchItems, ...publicTask } = task;
   return {
     ...publicTask,
-    onshapePartStudioUrl: onshapePartStudioUrlOf(task),
     activePrintBatch,
     reviewRejected:
       task.status === TASK_STATUS.PROCESSING &&

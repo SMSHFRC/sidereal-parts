@@ -113,7 +113,6 @@ export interface Task {
   onshapeWvmId: string | null;
   onshapeEid: string | null;
   onshapePartId: string | null;
-  onshapePartStudioUrl: string | null;
   onshapeConfig: string | null;
   onshapeRevision: string | null;
   onshapeThumbnailUrl: string | null;
