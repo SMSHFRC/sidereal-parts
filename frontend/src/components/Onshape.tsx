@@ -122,7 +122,6 @@ export function OnshapeCard({
     const { url } = await onshapeApi.authUrl();
     window.location.href = url;
   };
-  const openOnshapeUrl = task.onshapePartStudioUrl ?? task.drawingUrl;
 
   return (
     <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
@@ -139,14 +138,14 @@ export function OnshapeCard({
               {downloading ? '準備檔案中...' : `下載 ${download.label}`}
             </button>
           )}
-          {openOnshapeUrl && (
+          {task.drawingUrl && (
             <a
-              href={openOnshapeUrl}
+              href={task.drawingUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs font-medium text-emerald-700 active:text-emerald-900"
             >
-              {task.onshapePartStudioUrl ? '開啟 Part Studio' : '開啟 Onshape'}
+              開啟 Onshape
             </a>
           )}
         </div>
