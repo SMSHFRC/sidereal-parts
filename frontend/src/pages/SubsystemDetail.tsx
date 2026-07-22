@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, robotApi, type RobotSubsystem, type Task } from '../api';
+import { useAuth } from '../auth';
 import { Empty, ErrorBox, Spinner, StatusBadge, UrgentBadge } from '../ui';
 import { ProgressBar } from './Robots';
 
@@ -20,9 +21,12 @@ function priority(task: Task) {
 
 export default function SubsystemDetail() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const [subsystem, setSubsystem] = useState<RobotSubsystem | null>(null);
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [error, setError] = useState('');
+  const [clearing, setClearing] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(() => {
     if (!id) return;
@@ -38,6 +42,36 @@ export default function SubsystemDetail() {
   }, [id]);
 
   useEffect(load, [load]);
+
+  const clearContents = async () => {
+    if (!id || !subsystem || clearing) return;
+    const cotsQuantity = subsystem.progress?.parts?.total ?? 0;
+    const confirmed = window.confirm(
+      `確定要清空「${subsystem.name}」？\n\n` +
+        `將永久刪除 ${tasks?.length ?? 0} 個加工任務，以及 COTS／跳過項目` +
+        (cotsQuantity ? `（目前需求數量 ${cotsQuantity}）` : '') +
+        '。相關狀態、列印批次與加工積分紀錄也會一併移除。\n\n子系統資料夾本身會保留，此操作無法復原。',
+    );
+    if (!confirmed) return;
+
+    setClearing(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await robotApi.clearSubsystemContents(id);
+      const [updatedSubsystem, page] = await Promise.all([
+        robotApi.getSubsystem(id),
+        robotApi.subsystemTasks(id),
+      ]);
+      setSubsystem(updatedSubsystem);
+      setTasks(page.items);
+      setNotice(`已清空：移除 ${result.deletedTasks} 個加工任務、${result.deletedCotsItems} 個 COTS／跳過項目。`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '清空子系統失敗');
+    } finally {
+      setClearing(false);
+    }
+  };
 
   if (error) return <ErrorBox message={error} onRetry={load} />;
   if (!subsystem || !tasks) return <Spinner label="讀取子系統中..." />;
@@ -61,6 +95,16 @@ export default function SubsystemDetail() {
           {subsystem.note && <p className="mt-1 text-sm text-slate-500">{subsystem.note}</p>}
         </div>
         <div className="flex flex-wrap gap-2">
+          {user?.role === 'admin' && (
+            <button
+              type="button"
+              onClick={clearContents}
+              disabled={clearing}
+              className="min-h-11 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {clearing ? '清空中…' : '清空子系統'}
+            </button>
+          )}
           <Link
             to={`/import-items?robotId=${subsystem.robotId}&subsystemId=${subsystem.id}`}
             className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
@@ -75,6 +119,12 @@ export default function SubsystemDetail() {
           </Link>
         </div>
       </div>
+
+      {notice && (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {notice}
+        </div>
+      )}
 
       {/* 完成度 */}
       <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">

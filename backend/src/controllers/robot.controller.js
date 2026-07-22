@@ -47,6 +47,13 @@ export const robotController = {
     });
   }),
 
+  clearSubsystemContents: asyncHandler(async (req, res) => {
+    res.json({
+      success: true,
+      data: serialize(await robotService.clearSubsystemContents(req.params.subsystemId, req.user)),
+    });
+  }),
+
   subsystemTasks: asyncHandler(async (req, res) => {
     const result = await taskService.list(
       { ...req.validatedQuery, subsystemId: req.params.subsystemId, includeSubsystemCompleted: true },

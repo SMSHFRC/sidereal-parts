@@ -252,4 +252,102 @@ export const robotService = {
       include: subsystemInclude,
     });
   },
+
+  async clearSubsystemContents(id, actor) {
+    ensureAdmin(actor);
+
+    return prisma.$transaction(async (tx) => {
+      const subsystem = await tx.robotSubsystem.findUnique({
+        where: { id },
+        select: { id: true, name: true },
+      });
+      if (!subsystem) throw ApiError.notFound('找不到此子系統');
+
+      const [tasks, cotsItems] = await Promise.all([
+        tx.task.findMany({
+          where: { subsystemId: id },
+          select: { id: true, importBatchId: true },
+        }),
+        tx.cotsItem.findMany({
+          where: { subsystemId: id },
+          select: { id: true, batchId: true },
+        }),
+      ]);
+
+      const taskIds = tasks.map((task) => task.id);
+      const affectedImportBatchIds = [
+        ...new Set([
+          ...tasks.map((task) => task.importBatchId).filter(Boolean),
+          ...cotsItems.map((item) => item.batchId),
+        ]),
+      ];
+
+      let removedPointEntries = 0;
+      let adjustedUsers = 0;
+      let affectedPrintBatchIds = [];
+
+      if (taskIds.length > 0) {
+        const [pointAdjustments, printBatchItems] = await Promise.all([
+          tx.userPointsLedger.groupBy({
+            by: ['userId'],
+            where: { taskId: { in: taskIds } },
+            _sum: { points: true },
+          }),
+          tx.printBatchTask.findMany({
+            where: { taskId: { in: taskIds } },
+            select: { batchId: true },
+          }),
+        ]);
+
+        affectedPrintBatchIds = [...new Set(printBatchItems.map((item) => item.batchId))];
+        const deletedPoints = await tx.userPointsLedger.deleteMany({
+          where: { taskId: { in: taskIds } },
+        });
+        removedPointEntries = deletedPoints.count;
+
+        for (const entry of pointAdjustments) {
+          const points = entry._sum.points ?? 0;
+          if (points === 0) continue;
+          await tx.user.update({
+            where: { id: entry.userId },
+            data: { totalPoints: { decrement: BigInt(points) } },
+          });
+          adjustedUsers += 1;
+        }
+      }
+
+      const [deletedTasks, deletedCotsItems] = await Promise.all([
+        tx.task.deleteMany({ where: { subsystemId: id } }),
+        tx.cotsItem.deleteMany({ where: { subsystemId: id } }),
+      ]);
+
+      if (affectedPrintBatchIds.length > 0) {
+        await tx.printBatch.deleteMany({
+          where: {
+            id: { in: affectedPrintBatchIds },
+            items: { none: {} },
+          },
+        });
+      }
+
+      if (affectedImportBatchIds.length > 0) {
+        await tx.onshapeImportBatch.deleteMany({
+          where: {
+            id: { in: affectedImportBatchIds },
+            tasks: { none: {} },
+            cotsItems: { none: {} },
+          },
+        });
+      }
+
+      return {
+        subsystemId: subsystem.id,
+        subsystemName: subsystem.name,
+        deletedTasks: deletedTasks.count,
+        deletedCotsItems: deletedCotsItems.count,
+        removedPointEntries,
+        adjustedUsers,
+      };
+    });
+  },
 };

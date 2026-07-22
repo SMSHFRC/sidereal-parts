@@ -226,6 +226,15 @@ export interface RobotSubsystem extends SubsystemRef {
   progress?: TaskProgress;
 }
 
+export interface ClearSubsystemResult {
+  subsystemId: string;
+  subsystemName: string;
+  deletedTasks: number;
+  deletedCotsItems: number;
+  removedPointEntries: number;
+  adjustedUsers: number;
+}
+
 // ---------- M3: Onshape ----------
 export interface OnshapeStatus {
   enabled: boolean;
@@ -620,6 +629,8 @@ export const robotApi = {
     }),
   getSubsystem: (id: string) => api<RobotSubsystem>(`/robots/subsystems/${id}`),
   subsystemTasks: (id: string) => api<Paged<Task>>(`/robots/subsystems/${id}/tasks?limit=100`),
+  clearSubsystemContents: (id: string) =>
+    api<ClearSubsystemResult>(`/robots/subsystems/${id}/contents`, { method: 'DELETE' }),
 };
 
 export const metaApi = {

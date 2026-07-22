@@ -167,6 +167,102 @@ test('member 不可預先指派人員（接單制，403）', async () => {
   assert.equal(res.status, 403);
 });
 
+test('只有 admin 可清空子系統內容，任務、COTS 與任務積分會移除但子系統保留', async () => {
+  const robot = await api
+    .post('/api/v1/robots')
+    .set(auth(ctx.adminToken))
+    .send({ name: `Clear Test Robot ${S}` });
+  assert.equal(robot.status, 201);
+
+  const subsystem = await api
+    .post(`/api/v1/robots/${robot.body.data.id}/subsystems`)
+    .set(auth(ctx.adminToken))
+    .send({ name: 'Clear Target' });
+  assert.equal(subsystem.status, 201);
+
+  const task = await api
+    .post('/api/v1/tasks')
+    .set(auth(ctx.memberAToken))
+    .send({
+      systemId: subsystem.body.data.system.id,
+      robotId: robot.body.data.id,
+      subsystemId: subsystem.body.data.id,
+      manufacturingMethodId: ctx.methodId['3DP'],
+      quantity: 1,
+    });
+  assert.equal(task.status, 201);
+
+  const admin = await prisma.user.findUniqueOrThrow({ where: { username: 'admin' } });
+  const importBatch = await prisma.onshapeImportBatch.create({
+    data: {
+      userId: admin.id,
+      sourceUrl: 'https://example.test/clear-subsystem',
+      documentId: `clear-${S}`,
+      wvm: 'w',
+      wvmId: `w-${S}`,
+      elementId: `e-${S}`,
+    },
+  });
+  const cotsItem = await prisma.cotsItem.create({
+    data: {
+      batchId: importBatch.id,
+      systemId: subsystem.body.data.system.id,
+      robotId: BigInt(robot.body.data.id),
+      subsystemId: BigInt(subsystem.body.data.id),
+      kind: 'cots',
+      name: 'Clear test COTS',
+      quantity: 2,
+    },
+  });
+
+  const memberId = BigInt(ctx.memberAId);
+  const pointsBefore = await prisma.user.findUniqueOrThrow({
+    where: { id: memberId },
+    select: { totalPoints: true },
+  });
+  await prisma.$transaction([
+    prisma.userPointsLedger.create({
+      data: {
+        userId: memberId,
+        taskId: BigInt(task.body.data.id),
+        points: 7,
+        reason: 'test_clear_subsystem',
+      },
+    }),
+    prisma.user.update({
+      where: { id: memberId },
+      data: { totalPoints: { increment: 7 } },
+    }),
+  ]);
+
+  const forbidden = await api
+    .delete(`/api/v1/robots/subsystems/${subsystem.body.data.id}/contents`)
+    .set(auth(ctx.memberAToken));
+  assert.equal(forbidden.status, 403);
+
+  const cleared = await api
+    .delete(`/api/v1/robots/subsystems/${subsystem.body.data.id}/contents`)
+    .set(auth(ctx.adminToken));
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.body.data.deletedTasks, 1);
+  assert.equal(cleared.body.data.deletedCotsItems, 1);
+  assert.equal(cleared.body.data.removedPointEntries, 1);
+  assert.equal(cleared.body.data.adjustedUsers, 1);
+
+  const [keptSubsystem, deletedTask, deletedCots, deletedBatch, memberAfter] = await Promise.all([
+    prisma.robotSubsystem.findUnique({ where: { id: BigInt(subsystem.body.data.id) } }),
+    prisma.task.findUnique({ where: { id: BigInt(task.body.data.id) } }),
+    prisma.cotsItem.findUnique({ where: { id: cotsItem.id } }),
+    prisma.onshapeImportBatch.findUnique({ where: { id: importBatch.id } }),
+    prisma.user.findUniqueOrThrow({ where: { id: memberId }, select: { totalPoints: true } }),
+  ]);
+  assert.ok(keptSubsystem);
+  assert.equal(deletedTask, null);
+  assert.equal(deletedCots, null);
+  assert.equal(deletedBatch, null);
+  assert.equal(memberAfter.totalPoints, pointsBefore.totalPoints);
+});
+
 test('member 建立任務（進任務池）：編號格式 ARM-####、積分 (5+2)*10=70', async () => {
   const res = await api
     .post('/api/v1/tasks')

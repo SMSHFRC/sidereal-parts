@@ -28,6 +28,12 @@ router.patch(
   validate(updateSubsystemSchema),
   robotController.updateSubsystem,
 );
+router.delete(
+  '/subsystems/:subsystemId/contents',
+  requireRole(ROLES.ADMIN),
+  validate(getSubsystemSchema),
+  robotController.clearSubsystemContents,
+);
 router.get(
   '/subsystems/:subsystemId/tasks',
   validate({ ...getSubsystemSchema, query: listTasksSchema.query }),
